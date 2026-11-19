@@ -533,3 +533,35 @@ def test_real_content_is_comparable_across_languages():
                 assert all(len(q["_src"][l]) == 1 for l in main.LANGS), (tid, q["id"])
                 for l in main.LANGS:
                     assert main.auto_score(q["answer"][l], q, l) == 1, (tid, q["id"], l)
+
+
+def test_test_mode_shortens_timers_and_gaps(env):
+    client, clock = env
+    tok = join(client, nick="pilot").json()["token"]
+    # a real participant who already finished Session 1 is waiting 48 h ...
+    run_session1(client, clock, tok)
+    assert state(client, tok)["stage"] == "wait"
+    pid = sqlite3.connect(main.DB_PATH).execute("SELECT id FROM participants WHERE nickname='pilot'").fetchone()[0]
+    # ... switching on test mode opens the next session 30 s after the last one
+    assert client.post("/api/admin/tester", headers=ADMIN, json={"id": pid, "tester": True}).status_code == 200
+    clock.advance(main.TEST_MODE_GAP_SEC)
+    st = state(client, tok, skip_intro=False)
+    assert st["stage"] == "day2" and st["step"]["timings"]["highlight"] == main.TEST_MODE_SEC
+    complete(client, tok, "intro")
+    st = state(client, tok)
+    assert st["step"]["id"] == "hl1" and st["step"]["remaining"] == main.TEST_MODE_SEC
+    clock.advance(main.TEST_MODE_SEC)
+    assert complete(client, tok, "hl1", {"selected": [0]}).status_code == 200
+    ov = client.get("/api/admin/overview", headers=ADMIN).json()["participants"][0]
+    assert ov["tester"] is True and ov["excluded"] is True
+    # testers don't count when balancing groups
+    groups = []
+    for i in range(4):
+        join(client, nick=f"real{i}")
+    con = sqlite3.connect(main.DB_PATH)
+    groups = [g for (g,) in con.execute("SELECT grp FROM participants WHERE tester=0")]
+    assert groups.count("A") == groups.count("B") == 2
+    # switching it off restores the real timings
+    client.post("/api/admin/tester", headers=ADMIN, json={"id": pid, "tester": False})
+    clock.advance(1)
+    assert state(client, tok)["step"]["dur"] == main.HIGHLIGHT_SEC   # same session continues, real timer

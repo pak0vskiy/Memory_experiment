@@ -49,10 +49,24 @@ BLOCK_SEC = env_int("BLOCK_SEC", 210)        # self-test + feedback block total 
 FEEDBACK_MIN_SEC = env_int("FEEDBACK_MIN_SEC", 60)
 DAY2_GAP = env_int("DAY2_GAP_SEC", 48 * 3600)
 DAY9_GAP = env_int("DAY9_GAP_SEC", 7 * 24 * 3600)
+# Test mode (switched on per participant from the admin page, for piloting on the live server):
+# every timed step lasts TEST_MODE_SEC and the next session opens TEST_MODE_GAP_SEC after the last.
+TEST_MODE_SEC = env_int("TEST_MODE_SEC", 30)
+TEST_MODE_GAP_SEC = env_int("TEST_MODE_GAP_SEC", 30)
+
+
+def timing(p):
+    """Durations for this participant: the real ones, or short ones in test mode."""
+    if p is not None and "tester" in p.keys() and p["tester"]:
+        t = TEST_MODE_SEC
+        return {"read": t, "highlight": t, "test": max(10, t * 3 // 4), "block": t, "feedback_min": 5,
+                "gap2": TEST_MODE_GAP_SEC, "gap9": TEST_MODE_GAP_SEC}
+    return {"read": READ_SEC, "highlight": HIGHLIGHT_SEC, "test": TEST_MAX_SEC, "block": BLOCK_SEC,
+            "feedback_min": FEEDBACK_MIN_SEC, "gap2": DAY2_GAP, "gap9": DAY9_GAP}
 TOLERANCE = 3  # seconds of clock slack when checking that a timed phase really finished
 
 TEXT_IDS = ("T1", "T2")
-LANGS = ("en", "ru", "ko")
+LANGS = ("en", "ru", "ko", "zh")
 
 # Brute-force guard for 4-digit PINs: after LOGIN_MAX_FAILS wrong PINs for one nickname,
 # that nickname is locked for LOGIN_LOCK_SEC. Kept in memory; a restart clears it.
@@ -115,7 +129,7 @@ CREATE TABLE IF NOT EXISTS participants (
   created_at REAL NOT NULL,
   day0_done REAL, day2_done REAL, day9_done REAL,
   stage TEXT, step INTEGER DEFAULT 0, step_started REAL,
-  test_used REAL, belief TEXT, excluded INTEGER DEFAULT 0
+  test_used REAL, belief TEXT, excluded INTEGER DEFAULT 0, tester INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS answers (
   id INTEGER PRIMARY KEY,
@@ -160,6 +174,7 @@ MIGRATIONS = {
     "answers": {"first_ms": "INTEGER", "edits": "INTEGER"},
     "events": {"detail": "TEXT"},
     "highlight_log": {"method": "TEXT"},
+    "participants": {"tester": "INTEGER DEFAULT 0"},
 }
 
 
@@ -173,7 +188,8 @@ def migrate(con):
 
 # ---------------------------------------------------------------- content
 CONTENT = {}
-SENT_SPLIT = re.compile(r"(?<=[.!?。！？])\s+")
+# Sentence ends: . ! ? followed by a space (en/ru/ko), or Chinese 。！？ (no space follows them).
+SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[。！？])\s*")
 
 
 def validate_content(raw):
@@ -217,8 +233,9 @@ def validate_content(raw):
                     for k in keys:
                         nk = norm(k)
                         # A single Latin/Cyrillic letter matches almost any answer. (One Hangul
-                        # syllable such as 툰 is a real word, so it's allowed.)
-                        if len(nk) == 1 and not nk.isdigit() and not ("\uac00" <= nk <= "\ud7a3") and not k.startswith("="):
+                        # syllable such as 툰 or one Chinese character such as 酸 is a real word.)
+                        if (len(nk) == 1 and not nk.isdigit() and not ("\uac00" <= nk <= "\ud7a3")
+                                and not ("\u4e00" <= nk <= "\u9fff") and not k.startswith("=")):
                             out.append(f"{where}: keyword '{k}' ({l}) is a single letter and will match almost anything")
                 if kind == "practice":
                     practice_facts.add(q.get("fact", q.get("id")))
@@ -334,23 +351,24 @@ def text_for(grp, condition):
 
 
 def plan(p, stage):
+    tm = timing(p)
     usual = text_for(p["grp"], "highlight")
     routine = text_for(p["grp"], "test")
     # Each session opens with an untimed "how this works" screen (time spent on it is logged).
     if stage == "day0":
         return [
             {"id": "intro", "type": "intro", "variant": "s1"},
-            {"id": "read1", "type": "read", "text": "T1", "dur": READ_SEC},
-            {"id": "read2", "type": "read", "text": "T2", "dur": READ_SEC},
-            {"id": "test", "type": "test", "text": routine, "dur": TEST_MAX_SEC},
+            {"id": "read1", "type": "read", "text": "T1", "dur": tm["read"]},
+            {"id": "read2", "type": "read", "text": "T2", "dur": tm["read"]},
+            {"id": "test", "type": "test", "text": routine, "dur": tm["test"]},
             {"id": "feedback", "type": "feedback", "text": routine},
         ]
     if stage == "day2":
         return [
             {"id": "intro", "type": "intro", "variant": "s2"},
-            {"id": "hl1", "type": "highlight", "text": usual, "dur": HIGHLIGHT_SEC, "round": 1},
-            {"id": "hl2", "type": "highlight", "text": usual, "dur": HIGHLIGHT_SEC, "round": 2},
-            {"id": "test", "type": "test", "text": routine, "dur": TEST_MAX_SEC},
+            {"id": "hl1", "type": "highlight", "text": usual, "dur": tm["highlight"], "round": 1},
+            {"id": "hl2", "type": "highlight", "text": usual, "dur": tm["highlight"], "round": 2},
+            {"id": "test", "type": "test", "text": routine, "dur": tm["test"]},
             {"id": "feedback", "type": "feedback", "text": routine},
             {"id": "predict", "type": "predict"},
         ]
@@ -380,12 +398,14 @@ SURVEY = {
 def current_stage(p, now):
     if p["day0_done"] is None:
         return "day0", None
+    # A session that has already been started stays open, even if timings change meanwhile
+    # (e.g. test mode switched off, or .env edited).
     if p["day2_done"] is None:
-        unlock = p["day0_done"] + DAY2_GAP
-        return ("day2", None) if now >= unlock else ("wait", unlock)
+        unlock = p["day0_done"] + timing(p)["gap2"]
+        return ("day2", None) if now >= unlock or p["stage"] == "day2" else ("wait", unlock)
     if p["day9_done"] is None:
-        unlock = p["day2_done"] + DAY9_GAP
-        return ("day9", None) if now >= unlock else ("wait", unlock)
+        unlock = p["day2_done"] + timing(p)["gap9"]
+        return ("day9", None) if now >= unlock or p["stage"] == "day9" else ("wait", unlock)
     return "done", None
 
 
@@ -463,7 +483,7 @@ async def join(request: Request):
         if lang not in LANGS or not lang_available(lang):
             raise HTTPException(400, "language not available")
         counts = {g: 0 for g in "AB"}
-        for r in con.execute("SELECT grp, COUNT(*) c FROM participants WHERE excluded=0 GROUP BY grp"):
+        for r in con.execute("SELECT grp, COUNT(*) c FROM participants WHERE excluded=0 AND tester=0 GROUP BY grp"):
             counts[r["grp"]] = r["c"]
         grp = "A" if counts["A"] < counts["B"] else "B" if counts["B"] < counts["A"] else secrets.choice("AB")
         token = secrets.token_urlsafe(24)
@@ -530,12 +550,14 @@ def step_payload(con, p, step, now):
     elif step["type"] == "intro":
         payload["variant"] = step["variant"]
         # real durations, so the instructions never state the wrong time (pilot timings differ)
-        payload["timings"] = {"read": READ_SEC, "highlight": HIGHLIGHT_SEC, "test": TEST_MAX_SEC, "block": BLOCK_SEC}
+        tm = timing(p)
+        payload["timings"] = {k: tm[k] for k in ("read", "highlight", "test", "block")}
     elif step["type"] == "survey":
         payload["texts"] = [{"text": tid, "title": tr(CONTENT["texts"][tid]["title"], lang)} for tid in TEXT_IDS]
         payload["items"] = {k: list(v) for k, v in SURVEY.items()}
     if step["type"] == "feedback":
-        dur = max(FEEDBACK_MIN_SEC, BLOCK_SEC - (p["test_used"] or 0))
+        tm = timing(p)
+        dur = max(tm["feedback_min"], tm["block"] - (p["test_used"] or 0))
     else:
         dur = step.get("dur")
     if dur:
@@ -595,7 +617,8 @@ async def complete(request: Request, x_token: str = Header(None)):
         if step["type"] in ("read", "highlight") and elapsed < step["dur"] - TOLERANCE:
             raise HTTPException(409, "time not up yet")
         if step["type"] == "feedback":
-            need = max(FEEDBACK_MIN_SEC, BLOCK_SEC - (p["test_used"] or 0))
+            tm = timing(p)
+            need = max(tm["feedback_min"], tm["block"] - (p["test_used"] or 0))
             if elapsed < need - TOLERANCE:
                 raise HTTPException(409, "time not up yet")
 
@@ -638,7 +661,7 @@ async def complete(request: Request, x_token: str = Header(None)):
                      small_int(a.get("first_ms"), 0, 10**8), small_int(a.get("edits"), 0, 10**6), now),
                 )
             if step["type"] == "test":
-                con.execute("UPDATE participants SET test_used=? WHERE id=?", (min(elapsed, TEST_MAX_SEC), p["id"]))
+                con.execute("UPDATE participants SET test_used=? WHERE id=?", (min(elapsed, timing(p)["test"]), p["id"]))
         elif step["type"] == "predict":
             for tid in TEXT_IDS:
                 mx = len(CONTENT["texts"][tid]["final"])
@@ -744,10 +767,11 @@ def participant_summary(con, p, now):
         status, due = "done", None
     else:
         status = f"{stage} open" + (" (in progress)" if p["stage"] == stage else "")
-        due = (p["day0_done"] + DAY2_GAP) if stage == "day2" else (p["day2_done"] + DAY9_GAP) if stage == "day9" else p["created_at"]
+        tm = timing(p)
+        due = (p["day0_done"] + tm["gap2"]) if stage == "day2" else (p["day2_done"] + tm["gap9"]) if stage == "day9" else p["created_at"]
     return {
         "id": p["id"], "nickname": p["nickname"], "lang": p["lang"], "group": p["grp"],
-        "excluded": bool(p["excluded"]), "status": status, "stage": stage, "due_at": due,
+        "excluded": bool(p["excluded"]), "tester": bool(p["tester"]), "status": status, "stage": stage, "due_at": due,
         "created_at": p["created_at"], "day0_done": p["day0_done"], "day2_done": p["day2_done"], "day9_done": p["day9_done"],
         "gap_day0_day2_h": round((p["day2_done"] - p["day0_done"]) / 3600, 1) if p["day2_done"] and p["day0_done"] else None,
         "gap_day2_day9_h": round((p["day9_done"] - p["day2_done"]) / 3600, 1) if p["day9_done"] and p["day2_done"] else None,
@@ -802,7 +826,7 @@ def build_items(con):
         else:
             hyper = "high-conf error" if (s0["confidence"] or 0) >= 4 else "low-conf error"
         out.append({
-            "nickname": p["nickname"], "group": p["grp"], "lang": p["lang"], "excluded": p["excluded"],
+            "nickname": p["nickname"], "group": p["grp"], "lang": p["lang"], "excluded": p["excluded"], "tester": p["tester"],
             "text_id": a["text_id"], "condition": a["condition"], "read_first": int(a["text_id"] == "T1"),
             "qid": a["qid"], "fact": a["fact"],
             "final_answer": a["answer"], "final_correct": effective(a), "final_confidence": a["confidence"],
@@ -827,7 +851,7 @@ def _mean(xs):
 
 def insights(con):
     """Headline numbers for the presentation, from non-excluded participants who finished."""
-    done = {p["nickname"] for p in con.execute("SELECT nickname FROM participants WHERE day9_done IS NOT NULL AND excluded=0")}
+    done = {p["nickname"] for p in con.execute("SELECT nickname FROM participants WHERE day9_done IS NOT NULL AND excluded=0 AND tester=0")}
     items = [r for r in build_items(con) if r["nickname"] in done]
     by = lambda f: [r for r in items if f(r)]
 
@@ -857,7 +881,7 @@ def insights(con):
     out["prediction_vs_actual"] = pr
     beliefs = {}
     for r in con.execute("SELECT p.belief b, s.value a FROM participants p LEFT JOIN survey s ON s.pid=p.id AND"
-                         " s.item='belief_after' WHERE p.day9_done IS NOT NULL AND p.excluded=0"):
+                         " s.item='belief_after' WHERE p.day9_done IS NOT NULL AND p.excluded=0 AND p.tester=0"):
         beliefs.setdefault("before_test", {}).setdefault(r["b"] or "?", 0)
         beliefs["before_test"][r["b"] or "?"] += 1
         beliefs.setdefault("after_test", {}).setdefault(r["a"] or "?", 0)
@@ -881,7 +905,8 @@ def admin_overview(x_admin_key: str = Header(None)):
         rows = [participant_summary(con, p, now) for p in con.execute("SELECT * FROM participants ORDER BY id")]
     return {"server_now": now, "participants": rows,
             "config": {"DAY2_GAP_SEC": DAY2_GAP, "DAY9_GAP_SEC": DAY9_GAP, "READ_SEC": READ_SEC,
-                       "HIGHLIGHT_SEC": HIGHLIGHT_SEC, "TEST_MAX_SEC": TEST_MAX_SEC, "BLOCK_SEC": BLOCK_SEC}}
+                       "HIGHLIGHT_SEC": HIGHLIGHT_SEC, "TEST_MAX_SEC": TEST_MAX_SEC, "BLOCK_SEC": BLOCK_SEC,
+                       "TEST_MODE_SEC": TEST_MODE_SEC, "TEST_MODE_GAP_SEC": TEST_MODE_GAP_SEC}}
 
 
 @app.get("/api/admin/answers")
@@ -919,6 +944,24 @@ async def admin_exclude(request: Request, x_admin_key: str = Header(None)):
     body = await request.json()
     with db() as con:
         con.execute("UPDATE participants SET excluded=? WHERE id=?", (1 if body.get("excluded") else 0, int(body["id"])))
+    return {"ok": True}
+
+
+@app.post("/api/admin/tester")
+async def admin_tester(request: Request, x_admin_key: str = Header(None)):
+    """Test mode for one participant: 30 s timers, next session opens 30 s after the last one,
+    and the participant is excluded from the analysis (they stay in the CSVs with tester=1)."""
+    require_admin(x_admin_key)
+    body = await request.json()
+    on = 1 if body.get("tester") else 0
+    with db() as con:
+        pid = int(body["id"])
+        if on:
+            con.execute("UPDATE participants SET tester=1, excluded=1 WHERE id=?", (pid,))
+        else:
+            con.execute("UPDATE participants SET tester=0 WHERE id=?", (pid,))
+        con.execute("INSERT INTO events (pid,stage,step,type,ts) VALUES (?,?,?,?,?)",
+                    (pid, None, "", "tester_on" if on else "tester_off", time.time()))
     return {"ok": True}
 
 
@@ -978,7 +1021,7 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             return csv_response("participants.csv", header, [[r[h] for h in header] for r in rows])
         if what == "answers":
             rows = con.execute(
-                "SELECT a.id, p.nickname, p.grp, p.lang, p.excluded, a.stage, a.kind, a.text_id, a.condition, a.qid, a.fact,"
+                "SELECT a.id, p.nickname, p.grp, p.lang, p.excluded, p.tester, a.stage, a.kind, a.text_id, a.condition, a.qid, a.fact,"
                 " a.answer, a.confidence, a.auto_correct, a.override,"
                 " COALESCE(a.override, a.auto_correct) AS correct, a.rt_ms, a.first_ms, a.edits, a.ts"
                 " FROM answers a JOIN participants p ON p.id=a.pid ORDER BY a.pid, a.id"
@@ -1051,6 +1094,7 @@ REMINDER_TEXT = {
     "en": ("Memory study – session {n}", "Your next memory study session is open. Log in with your nickname and PIN: {url}"),
     "ru": ("Исследование памяти – сессия {n}", "Следующая сессия исследования памяти открыта. Войдите с никнеймом и PIN: {url}"),
     "ko": ("기억 연구 – 세션 {n}", "다음 기억 연구 세션이 열렸습니다. 닉네임과 PIN으로 로그인하세요: {url}"),
+    "zh": ("记忆研究 – 第 {n} 次", "下一次记忆研究已开放。请用昵称和PIN码登录：{url}"),
 }
 
 

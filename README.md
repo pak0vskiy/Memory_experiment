@@ -2,7 +2,7 @@
 
 A small web app for running a 3-session memory experiment with real participants. It was built for a university team presentation, *"Remembering as Learning: Why Does Trying to Remember Strengthen Memory More Than Reviewing Notes?"*, in the Introduction to Neuroscience / Science of Learning course (Prof. Sungshin Kim, Hanyang University).
 
-Participants use it on iPad, phone or laptop, in **Russian, English or Korean**. The researcher uses an admin page to track people, re-mark answers and export CSV data.
+Participants use it on iPad, phone or laptop, in **English, Russian, Korean or Simplified Chinese**. The researcher uses an admin page to track people, re-mark answers and export CSV data.
 
 ---
 
@@ -26,7 +26,7 @@ Participants use it on iPad, phone or laptop, in **Russian, English or Korean**.
 ### Design
 
 - **Within-subject.** Every participant studies two texts, T1 and T2, one with each method.
-- **Counterbalanced.** The app assigns group A or B at sign-up, balancing group sizes:
+- **Counterbalanced.** The app assigns group A or B at sign-up, balancing group sizes (the **Grp** column on the admin page):
 
 | Group | T1 | T2 |
 |---|---|---|
@@ -48,7 +48,7 @@ Every session starts with an untimed instructions screen (`intro`): Session 1 ex
 
 **Highlighting** marks whole sentences (the unit used to link facts to highlights):
 - finger: tap a sentence to highlight it, tap again to remove; swiping scrolls as usual
-- Apple Pencil or mouse: press and drag over the text to highlight every sentence passed over; a drag that starts on a highlighted sentence erases instead (Pencil strokes don't scroll the page)
+- Apple Pencil or mouse: press and drag, like selecting text: every sentence from where the stroke starts to where the pen is (in reading order) gets highlighted, whatever path the pen takes; a drag that starts on a highlighted sentence erases instead (Pencil strokes don't scroll the page)
 - keyboard: Enter/Space on a focused sentence
 
 Every change is logged with its method (`touch` / `pen` / `mouse` / `key`).
@@ -90,7 +90,7 @@ memory-study/
 │   └── static/
 │       ├── index.html     # participant page shell
 │       ├── app.js         # participant single-page app (vanilla JS, no build step)
-│       ├── i18n.js        # all participant UI strings in en / ru / ko
+│       ├── i18n.js        # all participant UI strings in en / ru / ko / zh
 │       ├── style.css      # shared styles (iPad-first, light + dark mode)
 │       ├── admin.html     # admin page shell
 │       └── admin.js       # admin dashboard: table, paired-score chart, answer grading, exports
@@ -192,7 +192,7 @@ Pages: `/` (participants), `/admin` (researcher), `/healthz`.
 - `accept` = keywords. Use stems for Russian (`ротоног` matches ротоногие/ротоногих). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. A keyword starting with `=` must equal the whole answer: Korean `=암` accepts 암 (cancer) but not 암컷 (female), `=산` accepts 산 (acid) but not 이산화탄소. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
 - A language is offered at sign-up only if **both** texts have a body in it.
 - **Current content (the real texts):** T1 *Mantis shrimp* and T2 *The naked mole-rat*, written as a matched pair: ~238 English words each, the same kinds of facts (a group/region, a habitat or body part, a named scientist, numbers, a technical term, a nickname/substance), 10 facts per text. Each fact has a self-test question (Sessions 1–2) and a reworded final question (Session 3).
-- **Comparable across languages:** en/ru/ko have the same paragraphs and the same number of sentences (T1: 2/5/3/5/1, T2: 3/5/4/3), each fact is in the same sentence in every language, tested numbers are digits everywhere, and no language gets extra hints. Within each language the two texts differ in length by ≤5%. `test_real_content_is_comparable_across_languages` checks this. Have a native speaker read each translation before the study.
+- **Comparable across languages:** en/ru/ko/zh have the same paragraphs and the same number of sentences (T1: 2/5/3/5/1, T2: 3/5/4/3), each fact is in the same sentence in every language, tested numbers are digits everywhere, and no language gets extra hints. Within each language the two texts differ in length by ≤5%. `test_real_content_is_comparable_across_languages` checks this. Have a native speaker read each translation before the study.
 - Facts to double-check against the sources: Patek, Korff & Caldwell 2004 (*Nature*; 23 m/s, saddle spring), Thoen et al. 2014 (*Science*; 12 colour receptors, poor colour discrimination), Jarvis 1981 (*Science*; eusociality), Park et al. 2017 (*Science*; 18 min without oxygen, fructose). Colony size "about 80" is a typical average.
 
 ### Configuration (environment variables)
@@ -208,6 +208,7 @@ Pages: `/` (participants), `/admin` (researcher), `/healthz`.
 | `DAY2_GAP_SEC` | 172800 | 48 h between Session 1 and 2 |
 | `DAY9_GAP_SEC` | 604800 | 7 days between Session 2 and 3 |
 | `LOGIN_MAX_FAILS`, `LOGIN_LOCK_SEC` | 8, 900 | PIN-guessing guard per nickname |
+| `TEST_MODE_SEC`, `TEST_MODE_GAP_SEC` | 30, 30 | Timers and gap between sessions for participants in test mode |
 | `DATA_DIR`, `CONTENT_FILE` | set in Dockerfile | Paths for the database and content |
 
 ---
@@ -284,6 +285,10 @@ At the end it prints the admin key and `tailscale funnel status` shows the publi
 
 **3. Pilot, then reset**
 
+**Test mode (easiest way to pilot on the live server):** on the admin page, press **Test mode** next to your own test participant. For that participant every timer becomes 30 s (`TEST_MODE_SEC`), the next session opens 30 s after finishing one (`TEST_MODE_GAP_SEC`), and they're excluded from the analysis (shown with a TEST label; `tester=1` in the CSVs; not counted when balancing groups). Real participants are unaffected, so you can use it any time, also during the study. Switching it on for someone waiting for Session 2 opens it right away. A session that has started always stays open, even if test mode or `.env` timings change.
+
+Alternatively, for a full dry run with everyone on fast timings:
+
 Put the pilot timings from `.env.example` into `.env`, `docker compose up -d`, run all three sessions yourself (ideally on an iPad and a phone), then switch back to the real timings and:
 
 ```bash
@@ -346,8 +351,8 @@ print(it.groupby("condition")["final_confidence"].mean())
 
 ## 6. Open items / ideas
 
-- [x] Real texts in en / ru / ko (mantis shrimp, naked mole-rat), matched across languages.
-- [ ] Native speakers check the Russian and Korean versions; verify the facts against the sources listed under *Content format*.
+- [x] Real texts in en / ru / ko / zh (mantis shrimp, naked mole-rat), matched across languages.
+- [ ] Native speakers check the Russian, Korean and Chinese versions; verify the facts against the sources listed under *Content format*.
 - [ ] Run `deploy/setup-vps.sh` on the VPS, check Funnel, then pilot with 1–2 people on real devices.
 - [ ] Test on a real iPad and a phone (Safari): sentence tapping, keyboard, sliders, dark mode, calendar button.
 - [ ] Optional: drag-to-highlight across several sentences (currently tap per sentence, to avoid scroll conflicts on touch).

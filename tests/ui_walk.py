@@ -18,7 +18,7 @@ OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "shots")
 LANG = sys.argv[2] if len(sys.argv) > 2 else "en"
 NICK = sys.argv[3] if len(sys.argv) > 3 else "tester1"
 OUT.mkdir(parents=True, exist_ok=True)
-LANG_LABEL = {"en": "English", "ru": "Русский", "ko": "한국어"}[LANG]
+LANG_LABEL = {"en": "English", "ru": "Русский", "ko": "한국어", "zh": "中文"}[LANG]
 VIEWPORT = os.environ.get("VIEWPORT", "ipad")
 SIZE = {"ipad": {"width": 820, "height": 1180}, "phone": {"width": 390, "height": 844}}[VIEWPORT]
 
@@ -35,16 +35,19 @@ def start_session(page, name):
     page.wait_for_selector("ol.howto", state="detached")   # the practice text uses the same markup
 
 
-def drag_over(page, first, last):
-    """Mouse-drag from the start of sentence `first` to the end of sentence `last` (locators).
-    Uses the sentences' own line boxes: a wrapped sentence's bounding box covers other text."""
-    first.evaluate("e => e.scrollIntoView({ block: 'center' })")   # both ends must be on screen
+def drag_over(page, sents, first, last):
+    """Mouse-drag along the text from sentence `first` to sentence `last` (indices into the `sents`
+    locator), passing through every line box in between, the way a Pencil stroke follows the lines."""
+    sents.nth(first).evaluate("e => e.scrollIntoView({ block: 'center' })")   # whole stroke must be on screen
     page.wait_for_timeout(100)
-    a = first.evaluate("e => { const r = e.getClientRects()[0]; return [r.left + 4, r.top + r.height / 2]; }")
-    b = last.evaluate("e => { const rs = e.getClientRects(); const r = rs[rs.length - 1]; return [r.right - 4, r.top + r.height / 2]; }")
-    page.mouse.move(*a)
+    pts = []
+    for i in range(first, last + 1):
+        pts += sents.nth(i).evaluate(
+            "e => [...e.getClientRects()].flatMap(r => [[r.left + 3, r.top + r.height / 2], [r.right - 3, r.top + r.height / 2]])")
+    page.mouse.move(*pts[0])
     page.mouse.down()
-    page.mouse.move(*b, steps=15)
+    for x, y in pts[1:]:
+        page.mouse.move(x, y, steps=6)
     page.mouse.up()
 
 
@@ -100,7 +103,7 @@ with sync_playwright() as p:
     page.wait_for_selector("ol.howto")
     practice = page.locator(".card.try .sent")
     practice.nth(0).click()
-    drag_over(page, practice.nth(1), practice.nth(3))
+    drag_over(page, practice, 1, 3)
     assert page.locator(".card.try .sent.hl").count() == 4, "practice drag-highlight failed"
     start_session(page, "05b_intro_s2")
     page.wait_for_selector("article.selectable")
@@ -108,10 +111,9 @@ with sync_playwright() as p:
     for i in (0, 2):
         sents.nth(i).click()
     # drag from sentence 4 to 5 with the mouse paints both
-    drag_over(page, sents.nth(4), sents.nth(5))
+    drag_over(page, sents, 4, 5)
     on = page.evaluate("() => [...document.querySelectorAll('article.selectable .sent')].flatMap((s, i) => s.classList.contains('hl') ? [i] : [])")
-    # a diagonal stroke may also pass over a sentence in between, which then gets highlighted too
-    assert {0, 2, 4, 5} <= set(on), f"drag-highlight failed: {on}"
+    assert set(on) == {0, 2, 4, 5}, f"drag-highlight failed: {on}"
     print("highlighted after drag:", on)
     shot(page, "06_highlight")
     wait_continue(page)          # hl1

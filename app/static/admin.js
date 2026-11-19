@@ -114,7 +114,7 @@
       h("tbody", {}, ps.map(p => {
         const isDue = dueNow.includes(p);
         return h("tr", { class: (isDue ? "due " : "") + (p.excluded ? "excluded" : "") },
-          h("td", {}, p.nickname), h("td", {}, p.lang), h("td", {}, p.group), h("td", {}, p.status),
+          h("td", {}, p.nickname, p.tester ? h("span", { class: "badge" }, "TEST") : null), h("td", {}, p.lang), h("td", {}, p.group), h("td", {}, p.status),
           h("td", { title: when(p.due_at) }, p.due_at ? `${when(p.due_at)} (${rel(p.due_at, now)})` : ""),
           h("td", { class: "num" }, p.gap_day0_day2_h ?? ""), h("td", { class: "num" }, p.gap_day2_day9_h ?? ""),
           h("td", { class: "num", title: "Minutes from opening a session to finishing it. Much longer than ~15/15/5 means it was interrupted." },
@@ -126,7 +126,12 @@
           h("td", {}, h("button", { class: "btn small", onclick: async () => {
             if (!p.excluded && !confirm(`Exclude ${p.nickname} from the analysis? (Data is kept; you can include them again.)`)) return;
             await api("/api/admin/exclude", { id: p.id, excluded: !p.excluded }); load(); } },
-            p.excluded ? "Include" : "Exclude")));
+            p.excluded ? "Include" : "Exclude"),
+            " ",
+            h("button", { class: "btn small" + (p.tester ? " on" : ""), title: "Short timers and no waiting between sessions, for piloting", onclick: async () => {
+              if (!p.tester && !confirm(`Test mode for ${p.nickname}?\n\nTimers become ${ov.config.TEST_MODE_SEC} s and the next session opens ${ov.config.TEST_MODE_GAP_SEC} s after finishing one. ${p.nickname} is excluded from the analysis.\n\nOnly use this for your own test accounts.`)) return;
+              await api("/api/admin/tester", { id: p.id, tester: !p.tester }); load(); } },
+              p.tester ? "Test mode: on" : "Test mode")));
       })));
 
     $main.replaceChildren(

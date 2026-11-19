@@ -12,7 +12,7 @@
 
   function guessLang() {
     const n = (navigator.language || "en").slice(0, 2);
-    return ["en", "ru", "ko"].includes(n) ? n : "en";
+    return ["en", "ru", "ko", "zh"].includes(n) ? n : "en";
   }
 
   function t(key, vars = {}) {
@@ -111,7 +111,7 @@
   async function boot() {
     setLang(lang);
     $app.replaceChildren(h("p", { class: "muted" }, t("loading")));
-    let meta = { langs: ["en", "ru", "ko"] };
+    let meta = { langs: ["en", "ru", "ko", "zh"] };
     try { meta = await api("/api/meta"); } catch (e) { /* keep defaults */ }
     window.__langs = meta.langs;
     if (token) return refresh();
@@ -225,7 +225,7 @@
   // ------------------------------------------------------------ join / login
   function renderJoin(mode) {
     stopTimer();
-    const langs = window.__langs || ["en", "ru", "ko"];
+    const langs = window.__langs || ["en", "ru", "ko", "zh"];
     const langSel = h("div", { class: "langs", role: "group", "aria-label": t("language") },
       langs.map(l => h("button", {
         class: "chip" + (l === lang ? " on" : ""), type: "button",
@@ -291,8 +291,10 @@
 
   // The study text as sentences. If `selectable`, sentences can be highlighted:
   //  - finger: tap toggles a sentence; swiping scrolls the page as usual
-  //  - Apple Pencil / mouse: press and drag paints every sentence passed over; a drag that starts
-  //    on a highlighted sentence erases instead
+  //  - Apple Pencil / mouse: press and drag works like selecting text: every sentence from the one
+  //    where the stroke started to the one under the pen now (in reading order) gets highlighted,
+  //    whatever path the pen takes; moving back un-does the sentences that leave the range. A drag
+  //    that starts on a highlighted sentence erases instead.
   //  - keyboard: Enter/Space on a focused sentence
   // onChange(selectedIndices, {i, on, method}) is called for every single change.
   function textBlock(step, selectable, selected, onChange) {
@@ -302,7 +304,8 @@
       if (!paras[s.p]) paras[s.p] = h("p", {});
       const span = h("span", { class: "sent" + (sel.has(i) ? " hl" : ""), "data-i": i }, s.s);
       spans[i] = span;
-      paras[s.p].append(span, " ");
+      // a space between sentences, except after Chinese 。！？ (Chinese doesn't put spaces there)
+      paras[s.p].append(span, /[。！？]$/.test(s.s) ? "" : " ");
     });
     const article = h("article", { class: "text" + (selectable ? " selectable" : "") }, paras.filter(Boolean));
     if (!selectable) return { el: article, sel };
@@ -335,19 +338,27 @@
       if (i === null) return;
       e.preventDefault();
       skipClick = true;                                           // the click that follows is ours
-      drag = { on: !sel.has(i), method: e.pointerType === "pen" ? "pen" : "mouse" };
+      drag = { on: !sel.has(i), method: e.pointerType === "pen" ? "pen" : "mouse", anchor: i, lo: i, hi: i,
+               orig: new Map([[i, sel.has(i)]]) };
       set(i, drag.on, drag.method);
       article.classList.add("dragging");
     });
+    // Extend the stroke to sentence i: [anchor..i] gets the drag's state, sentences that drop out
+    // of the range go back to what they were before this stroke.
+    const extendTo = (i) => {
+      const lo = Math.min(drag.anchor, i), hi = Math.max(drag.anchor, i);
+      for (let j = drag.lo; j <= drag.hi; j++) if (j < lo || j > hi) set(j, drag.orig.get(j), drag.method);
+      for (let j = lo; j <= hi; j++) {
+        if (!drag.orig.has(j)) drag.orig.set(j, sel.has(j));
+        set(j, drag.on, drag.method);
+      }
+      drag.lo = lo; drag.hi = hi;
+    };
     article.addEventListener("pointermove", (e) => {
       if (!drag) return;
       e.preventDefault();
-      // sample along the path so a fast stroke doesn't skip a short sentence
-      const pts = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-      for (const pt of (pts.length ? pts : [e])) {
-        const i = sentAt(pt.clientX, pt.clientY);
-        if (i !== null) set(i, drag.on, drag.method);
-      }
+      const i = sentAt(e.clientX, e.clientY);
+      if (i !== null) extendTo(i);
     });
     const end = () => { drag = null; article.classList.remove("dragging"); };
     for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) article.addEventListener(ev, end);
@@ -573,7 +584,7 @@
   // ------------------------------------------------------------ between sessions / results
   function renderWait(st) {
     const unlockMs = (st.unlock_at - clockOffset) * 1000;
-    const when = new Date(unlockMs).toLocaleString(lang === "ko" ? "ko-KR" : lang === "ru" ? "ru-RU" : "en-GB",
+    const when = new Date(unlockMs).toLocaleString({ ko: "ko-KR", ru: "ru-RU", zh: "zh-CN" }[lang] || "en-GB",
       { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
     const left = h("p", { class: "muted center" });
     const reopen = h("button", { class: "btn primary hidden", onclick: refresh }, t("continue"));

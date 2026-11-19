@@ -53,10 +53,16 @@ def hdr(token):
     return {"X-Token": token}
 
 
-def state(client, token):
+def state(client, token, skip_intro=True):
+    """Current state. Each session starts with an untimed instructions step; by default it's
+    confirmed here, so tests start at the first real step."""
     r = client.get("/api/state", headers=hdr(token))
     assert r.status_code == 200, r.text
-    return r.json()
+    st = r.json()
+    if skip_intro and st.get("step", {}).get("type") == "intro":
+        assert complete(client, token, "intro").status_code == 200
+        return state(client, token)
+    return st
 
 
 def complete(client, token, step_id, data=None):
@@ -360,7 +366,8 @@ def run_all(client, clock, nick="bob", hl_selected=(0, 1), routine_right=True):
     clock.advance(30)
     client.post("/api/event", headers=hdr(tok), json={"type": "visible", "step_id": "hl1"})
     clock.advance(210)
-    log = [{"i": i, "a": "on", "t": 1000 * (k + 1)} for k, i in enumerate(hl_selected)] + [{"i": 99, "a": "on", "t": 1}]
+    log = [{"i": i, "a": "on", "t": 1000 * (k + 1), "m": "pen" if k else "touch"} for k, i in enumerate(hl_selected)] \
+        + [{"i": 99, "a": "on", "t": 1}, {"i": 0, "a": "on", "t": 5, "m": "laser"}]
     complete(client, tok, "hl1", {"selected": list(hl_selected), "log": log})
     clock.advance(240); complete(client, tok, "hl2", {"selected": list(hl_selected), "log": []})
     state(client, tok)
@@ -412,9 +419,11 @@ def test_behaviour_logs(env):
     tok, grp, routine, usual = run_all(client, clock)
     client.post("/api/event", headers=hdr(tok), json={"type": "device", "detail": {"kind": "tablet", "sw": 820, "sh": 1180, "tz": "Asia/Seoul", "ua": "x"}})
     log = csv_rows(client, "highlight_log")
-    assert [(r["round"], r["sentence"], r["action"]) for r in log] == [("1", "0", "on"), ("1", "1", "on")]   # bad index dropped
+    # bad index dropped; unknown method stored as empty
+    assert [(r["round"], r["sentence"], r["action"], r["method"]) for r in log] == \
+        [("1", "0", "on", "touch"), ("1", "1", "on", "pen"), ("1", "0", "on", "")]
     steps = {(r["stage"], r["step_id"]): r for r in csv_rows(client, "steps")}
-    assert len(steps) == 4 + 5 + 3
+    assert len(steps) == 5 + 6 + 4
     assert json.loads(steps[("day0", "read1")]["extra"]) == {"scroll_max": 0.8}
     assert json.loads(steps[("day0", "test")]["extra"])["auto_submit"] is True
     assert steps[("day2", "hl1")]["hidden_n"] == "1" and float(steps[("day2", "hl1")]["away_sec"]) == 30.0
@@ -483,3 +492,25 @@ def test_old_database_is_migrated(tmp_path, monkeypatch):
     assert "detail" in {r[1] for r in con.execute("PRAGMA table_info(events)")}
     assert con.execute("SELECT nickname FROM participants").fetchone()[0] == "old"
     assert con.execute("SELECT COUNT(*) FROM steps").fetchone()[0] == 0
+
+
+def test_each_session_starts_with_instructions(env):
+    client, clock = env
+    tok = join(client).json()["token"]
+    st = state(client, tok, skip_intro=False)
+    assert st["step"]["type"] == "intro" and st["step"]["variant"] == "s1" and st["step_index"] == 0
+    assert st["step"]["timings"] == {"read": 240, "highlight": 240, "test": 180, "block": 240}
+    assert "remaining" not in st["step"]                         # untimed
+    clock.advance(75)
+    assert complete(client, tok, "intro").status_code == 200
+    st = state(client, tok, skip_intro=False)
+    assert st["step"]["id"] == "read1" and st["step"]["remaining"] == 240   # reading timer starts after the intro
+    for sid in ("read1", "read2"):
+        clock.advance(240); complete(client, tok, sid)
+    text = state(client, tok)["step"]["text"]
+    clock.advance(180); complete(client, tok, "test", practice_answers(text))
+    clock.advance(60); complete(client, tok, "feedback")
+    clock.advance(48 * 3600)
+    assert state(client, tok, skip_intro=False)["step"]["variant"] == "s2"
+    steps = csv_rows(client, "steps")
+    assert steps[0]["step_id"] == "intro" and float(steps[0]["elapsed_sec"]) == 75.0

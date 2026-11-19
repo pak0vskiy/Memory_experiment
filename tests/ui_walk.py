@@ -27,6 +27,27 @@ def shot(page, name):
     page.screenshot(path=str(OUT / f"{LANG}_{VIEWPORT}_{name}.png"), full_page=True)
 
 
+def start_session(page, name):
+    """Each session opens with an instructions screen: screenshot it and press its button."""
+    page.wait_for_selector("ol.howto")
+    shot(page, name)
+    page.locator(".actions .btn.primary").click()
+    page.wait_for_selector("ol.howto", state="detached")   # the practice text uses the same markup
+
+
+def drag_over(page, first, last):
+    """Mouse-drag from the start of sentence `first` to the end of sentence `last` (locators).
+    Uses the sentences' own line boxes: a wrapped sentence's bounding box covers other text."""
+    first.evaluate("e => e.scrollIntoView({ block: 'center' })")   # both ends must be on screen
+    page.wait_for_timeout(100)
+    a = first.evaluate("e => { const r = e.getClientRects()[0]; return [r.left + 4, r.top + r.height / 2]; }")
+    b = last.evaluate("e => { const rs = e.getClientRects(); const r = rs[rs.length - 1]; return [r.right - 4, r.top + r.height / 2]; }")
+    page.mouse.move(*a)
+    page.mouse.down()
+    page.mouse.move(*b, steps=15)
+    page.mouse.up()
+
+
 def wait_continue(page):
     btn = page.locator(".actions .btn.primary")
     btn.wait_for(state="visible")
@@ -50,6 +71,7 @@ with sync_playwright() as p:
     page.check("#consent")
     page.check("#pledge")
     page.locator("form .btn.primary").click()
+    start_session(page, "01b_intro_s1")
     page.wait_for_selector("article.text")
     shot(page, "02_read")
     wait_continue(page)          # read1
@@ -74,10 +96,23 @@ with sync_playwright() as p:
     shot(page, "05_wait")
     time.sleep(6)
     page.reload()
+    # Session 2 instructions: try the practice paragraph (tap one sentence, mouse-drag over the rest)
+    page.wait_for_selector("ol.howto")
+    practice = page.locator(".card.try .sent")
+    practice.nth(0).click()
+    drag_over(page, practice.nth(1), practice.nth(3))
+    assert page.locator(".card.try .sent.hl").count() == 4, "practice drag-highlight failed"
+    start_session(page, "05b_intro_s2")
     page.wait_for_selector("article.selectable")
-    sents = page.locator(".sent")
-    for i in (0, 2, 4):
+    sents = page.locator("article.selectable .sent")
+    for i in (0, 2):
         sents.nth(i).click()
+    # drag from sentence 4 to 5 with the mouse paints both
+    drag_over(page, sents.nth(4), sents.nth(5))
+    on = page.evaluate("() => [...document.querySelectorAll('article.selectable .sent')].flatMap((s, i) => s.classList.contains('hl') ? [i] : [])")
+    # a diagonal stroke may also pass over a sentence in between, which then gets highlighted too
+    assert {0, 2, 4, 5} <= set(on), f"drag-highlight failed: {on}"
+    print("highlighted after drag:", on)
     shot(page, "06_highlight")
     wait_continue(page)          # hl1
     page.wait_for_selector("article.selectable")
@@ -105,6 +140,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".big")
     time.sleep(6)
     page.reload()
+    start_session(page, "08b_intro_s3")
     page.wait_for_selector(".answer")
     shot(page, "09_final")
     for _ in range(2):

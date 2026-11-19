@@ -139,7 +139,7 @@
     scrollMax = 0;
     sendDeviceOnce();
     ({ read: renderRead, highlight: renderHighlight, test: renderTest, feedback: renderFeedback,
-       predict: renderPredict, final: renderFinal, survey: renderSurvey })[step.type](step);
+       predict: renderPredict, final: renderFinal, survey: renderSurvey, intro: renderIntro })[step.type](step);
   }
 
   // ------------------------------------------------------------ behaviour logging
@@ -289,26 +289,82 @@
     return [h("h1", {}, title), h("p", { class: "hint" }, hint)];
   }
 
+  // The study text as sentences. If `selectable`, sentences can be highlighted:
+  //  - finger: tap toggles a sentence; swiping scrolls the page as usual
+  //  - Apple Pencil / mouse: press and drag paints every sentence passed over; a drag that starts
+  //    on a highlighted sentence erases instead
+  //  - keyboard: Enter/Space on a focused sentence
+  // onChange(selectedIndices, {i, on, method}) is called for every single change.
   function textBlock(step, selectable, selected, onChange) {
     const sel = new Set(selected || []);
-    const paras = [];
+    const paras = [], spans = [];
     step.sentences.forEach((s, i) => {
       if (!paras[s.p]) paras[s.p] = h("p", {});
       const span = h("span", { class: "sent" + (sel.has(i) ? " hl" : ""), "data-i": i }, s.s);
-      if (selectable) {
-        span.setAttribute("role", "button");
-        span.setAttribute("tabindex", "0");
-        const toggle = () => {
-          if (sel.has(i)) sel.delete(i); else sel.add(i);
-          span.classList.toggle("hl", sel.has(i));
-          onChange && onChange([...sel]);
-        };
-        span.addEventListener("click", toggle);
-        span.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-      }
+      spans[i] = span;
       paras[s.p].append(span, " ");
     });
-    return { el: h("article", { class: "text" + (selectable ? " selectable" : "") }, paras.filter(Boolean)), sel };
+    const article = h("article", { class: "text" + (selectable ? " selectable" : "") }, paras.filter(Boolean));
+    if (!selectable) return { el: article, sel };
+
+    const set = (i, on, method) => {
+      if (sel.has(i) === on) return;
+      if (on) sel.add(i); else sel.delete(i);
+      spans[i].classList.toggle("hl", on);
+      spans[i].setAttribute("aria-pressed", on ? "true" : "false");
+      onChange && onChange([...sel], { i, on, method });
+    };
+    const sentAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      const sp = el && el.closest ? el.closest(".sent") : null;
+      return sp && article.contains(sp) ? +sp.dataset.i : null;
+    };
+    spans.forEach((span, i) => {
+      span.setAttribute("role", "button");
+      span.setAttribute("tabindex", "0");
+      span.setAttribute("aria-pressed", sel.has(i) ? "true" : "false");
+      span.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); set(i, !sel.has(i), "key"); }
+      });
+    });
+
+    let drag = null, skipClick = false;
+    article.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch" || e.button > 0) return;      // finger: handled by click below
+      const i = sentAt(e.clientX, e.clientY);
+      if (i === null) return;
+      e.preventDefault();
+      skipClick = true;                                           // the click that follows is ours
+      drag = { on: !sel.has(i), method: e.pointerType === "pen" ? "pen" : "mouse" };
+      set(i, drag.on, drag.method);
+      article.classList.add("dragging");
+    });
+    article.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      // sample along the path so a fast stroke doesn't skip a short sentence
+      const pts = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      for (const pt of (pts.length ? pts : [e])) {
+        const i = sentAt(pt.clientX, pt.clientY);
+        if (i !== null) set(i, drag.on, drag.method);
+      }
+    });
+    const end = () => { drag = null; article.classList.remove("dragging"); };
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) article.addEventListener(ev, end);
+    window.addEventListener("pointerup", end);
+    article.addEventListener("click", (e) => {
+      if (skipClick) { skipClick = false; return; }
+      const sp = e.target.closest && e.target.closest(".sent");
+      if (sp) set(+sp.dataset.i, !sel.has(+sp.dataset.i), "touch");
+    });
+    // iPad: an Apple Pencil stroke would scroll the page; stop that (fingers still scroll).
+    article.addEventListener("touchstart", (e) => {
+      if ([...e.touches].some(tp => tp.touchType === "stylus")) e.preventDefault();
+    }, { passive: false });
+    article.addEventListener("touchmove", (e) => {
+      if ([...e.touches].some(tp => tp.touchType === "stylus")) e.preventDefault();
+    }, { passive: false });
+    return { el: article, sel };
   }
 
   function timedContinue(step, getData) {
@@ -330,14 +386,10 @@
     const r1 = step.round === 1;
     const draft = loadDraft(step);
     const started = Date.now() - stepMs(step);
-    // every tap: sentence index, on/off, ms since the round started
+    // every change: sentence index, on/off, ms since the round started, method (touch/pen/mouse/key)
     const log = (draft && draft.log) || [];
-    let prev = new Set(draft ? draft.selected : step.selected);
-    const { el, sel } = textBlock(step, true, [...prev], (selected) => {
-      const now = new Set(selected);
-      for (const i of now) if (!prev.has(i)) log.push({ i, a: "on", t: Date.now() - started });
-      for (const i of prev) if (!now.has(i)) log.push({ i, a: "off", t: Date.now() - started });
-      prev = now;
+    const { el, sel } = textBlock(step, true, draft ? draft.selected : step.selected, (selected, ch) => {
+      log.push({ i: ch.i, a: ch.on ? "on" : "off", t: Date.now() - started, m: ch.method });
       saveDraft(step, { selected, log });
     });
     $app.replaceChildren(
@@ -499,6 +551,23 @@
     } }, t("continue"));
     $app.replaceChildren(h("h1", {}, S.title), h("p", { class: "hint" }, S.hint), ...cards, errBox,
       h("div", { class: "actions" }, btn));
+  }
+
+  // "How this works" screen at the start of each session (untimed). Session 2's has a practice
+  // paragraph to try highlighting on; nothing typed or highlighted there is saved.
+  function renderIntro(step) {
+    const I = t("intro")[step.variant];
+    const dur = (sec) => sec >= 60 ? t("durMin", { n: Math.round(sec / 6) / 10 }) : t("durSec", { n: sec });
+    const vars = Object.fromEntries(Object.entries(step.timings || {}).map(([k, v]) => [k, dur(v)]));
+    const fill = (x) => x.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
+    const kids = [h("h1", {}, I.title), h("ol", { class: "howto" }, I.items.map(x => h("li", {}, fill(x))))];
+    if (I.sandbox) {
+      const { el } = textBlock({ sentences: I.sandbox.map(x => ({ s: x, p: 0 })) }, true, []);
+      kids.push(h("div", { class: "card try" }, h("p", { class: "label" }, I.tryTitle), el));
+    }
+    const btn = h("button", { class: "btn primary", onclick: () => { btn.disabled = true; complete(step, {}); } }, I.button);
+    kids.push(h("div", { class: "actions" }, btn));
+    $app.replaceChildren(...kids);
   }
 
   // ------------------------------------------------------------ between sessions / results

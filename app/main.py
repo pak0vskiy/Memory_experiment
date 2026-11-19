@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS steps (
 CREATE TABLE IF NOT EXISTS highlight_log (
   id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
   round INTEGER NOT NULL, text_id TEXT NOT NULL, sentence INTEGER NOT NULL, action TEXT NOT NULL,
-  t_ms INTEGER, ts REAL NOT NULL
+  t_ms INTEGER, ts REAL NOT NULL, method TEXT
 );
 -- end-of-study questionnaire, one row per item
 CREATE TABLE IF NOT EXISTS survey (
@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS survey (
 MIGRATIONS = {
     "answers": {"first_ms": "INTEGER", "edits": "INTEGER"},
     "events": {"detail": "TEXT"},
+    "highlight_log": {"method": "TEXT"},
 }
 
 
@@ -332,8 +333,10 @@ def text_for(grp, condition):
 def plan(p, stage):
     usual = text_for(p["grp"], "highlight")
     routine = text_for(p["grp"], "test")
+    # Each session opens with an untimed "how this works" screen (time spent on it is logged).
     if stage == "day0":
         return [
+            {"id": "intro", "type": "intro", "variant": "s1"},
             {"id": "read1", "type": "read", "text": "T1", "dur": READ_SEC},
             {"id": "read2", "type": "read", "text": "T2", "dur": READ_SEC},
             {"id": "test", "type": "test", "text": routine, "dur": TEST_MAX_SEC},
@@ -341,6 +344,7 @@ def plan(p, stage):
         ]
     if stage == "day2":
         return [
+            {"id": "intro", "type": "intro", "variant": "s2"},
             {"id": "hl1", "type": "highlight", "text": usual, "dur": HIGHLIGHT_SEC, "round": 1},
             {"id": "hl2", "type": "highlight", "text": usual, "dur": HIGHLIGHT_SEC, "round": 2},
             {"id": "test", "type": "test", "text": routine, "dur": TEST_MAX_SEC},
@@ -349,6 +353,7 @@ def plan(p, stage):
         ]
     if stage == "day9":
         return [
+            {"id": "intro", "type": "intro", "variant": "s3"},
             {"id": "final1", "type": "final", "text": "T1"},
             {"id": "final2", "type": "final", "text": "T2"},
             {"id": "survey", "type": "survey"},
@@ -519,6 +524,10 @@ def step_payload(con, p, step, now):
         ]
     elif step["type"] == "final":
         payload["questions"] = [{"qid": q["id"], "q": tr(q["q"], lang)} for q in t["final"]]
+    elif step["type"] == "intro":
+        payload["variant"] = step["variant"]
+        # real durations, so the instructions never state the wrong time (pilot timings differ)
+        payload["timings"] = {"read": READ_SEC, "highlight": HIGHLIGHT_SEC, "test": TEST_MAX_SEC, "block": BLOCK_SEC}
     elif step["type"] == "survey":
         payload["texts"] = [{"text": tid, "title": tr(CONTENT["texts"][tid]["title"], lang)} for tid in TEXT_IDS]
         payload["items"] = {k: list(v) for k, v in SURVEY.items()}
@@ -605,9 +614,11 @@ async def complete(request: Request, x_token: str = Header(None)):
                     i, action, t_ms = int(ev.get("i")), ev.get("a"), int(ev.get("t") or 0)
                 except (TypeError, ValueError, AttributeError):
                     continue
+                method = ev.get("m") if ev.get("m") in ("touch", "pen", "mouse", "key") else None
                 if 0 <= i < n_sent and action in ("on", "off"):
-                    con.execute("INSERT INTO highlight_log (pid,round,text_id,sentence,action,t_ms,ts) VALUES (?,?,?,?,?,?,?)",
-                                (p["id"], step["round"], step["text"], i, action, t_ms, now))
+                    con.execute("INSERT INTO highlight_log (pid,round,text_id,sentence,action,t_ms,ts,method)"
+                                " VALUES (?,?,?,?,?,?,?,?)",
+                                (p["id"], step["round"], step["text"], i, action, t_ms, now, method))
         elif step["type"] in ("test", "final"):
             t = CONTENT["texts"][step["text"]]
             items = {q["id"]: q for q in (t["practice"] if step["type"] == "test" else t["final"])}
@@ -976,7 +987,7 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             header = list(rows[0].keys()) if rows else ["nickname"]
             return csv_response("items.csv", header, [[r[h] for h in header] for r in rows])
         simple = {
-            "highlight_log": "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentence, h.action, h.t_ms, h.ts"
+            "highlight_log": "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentence, h.action, h.method, h.t_ms, h.ts"
                              " FROM highlight_log h JOIN participants p ON p.id=h.pid ORDER BY h.pid, h.id",
             "steps": "SELECT s.id, p.nickname, p.grp, p.lang, p.excluded, s.stage, s.step_id, s.type, s.text_id, s.condition,"
                      " s.started, s.finished, s.elapsed_sec, s.hidden_n, s.away_sec, s.extra"

@@ -1,0 +1,19 @@
+services:
+  memory-study:
+    build: .
+    image: memory-study:latest
+    container_name: memory-study
+    restart: unless-stopped
+    env_file: .env
+    # Bound to localhost only: the app is NOT reachable on the server's public IP.
+    # Tailscale Funnel forwards public HTTPS traffic to this port.
+    ports:
+      - "127.0.0.1:8090:8000"
+    volumes:
+      - ./data:/data
+      - ./content:/content:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

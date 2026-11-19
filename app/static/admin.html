@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Memory study · Admin</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  main { max-width: 1180px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--card); }
+  tr.due td { background: color-mix(in srgb, var(--hl) 30%, transparent); }
+  tr.excluded td { opacity: .45; text-decoration: line-through; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .small { font-size: 13px; padding: 4px 10px; min-height: 0; border-radius: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 8px 0 16px; }
+  .row a { color: var(--accent); }
+  .grade td { white-space: normal; vertical-align: top; }
+  .grade .on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  svg text { fill: var(--ink); font-size: 12px; }
+  .legend { color: var(--muted); font-size: 14px; }
+  .chartcard svg { max-width: 560px; display: block; margin: 0 auto; }
+  .grade td:last-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="top"><span class="brand">Memory study · Admin</span><span class="progress" id="updated"></span></header>
+<main id="admin"></main>
+<script src="/static/admin.js"></script>
+</body>
+</html>

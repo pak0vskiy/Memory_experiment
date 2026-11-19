@@ -271,6 +271,7 @@ def test_full_three_session_run(env):
 @pytest.mark.parametrize("answer,key,ok", [
     ("8", "8", True), ("8 legs", "8", True), ("0.5 mm", "05", True), ("0,5", "05", True), ("5", "05", False), ("eight legs", "eight", True), ("18", "8", False),
     ("2008", "8", False), ("in 2007.", "2007", True), ("20071", "2007", False), ("８", "8", True),
+    ("암", "=암", True), ("암컷", "=암", False), (" 암 ", "=암", True), ("이산화탄소", "=산", False),
     ("Бочонок", "бочон", True), ("бочонком", "бочон", True), ("Ёлка", "елк", True), ("툰 상태", "툰", True), ("", "8", False),
 ])
 def test_keyword_matching(answer, key, ok):
@@ -444,14 +445,17 @@ def test_insights(env):
     run_all(client, clock, nick="p1", hl_selected=(0, 1))
     run_all(client, clock, nick="p2", hl_selected=(0, 1, 2, 3, 4, 5, 6, 7), routine_right=False)
     d = client.get("/api/admin/insights", headers=ADMIN).json()
-    assert d["participants"] == 2 and d["items"] == 16
-    assert d["by_condition"]["test"]["accuracy"] == 1.0 and d["by_condition"]["highlight"]["accuracy"] == 0.5
+    n = len(main.CONTENT["texts"]["T1"]["final"])          # questions per text (both texts have the same number)
+    assert all(len(main.CONTENT["texts"][t][k]) == n for t in main.TEXT_IDS for k in ("practice", "final"))
+    assert d["participants"] == 2 and d["items"] == 2 * 2 * n
+    # run_all: routine text all right, usual text 2 right
+    assert d["by_condition"]["test"]["accuracy"] == 1.0 and d["by_condition"]["highlight"]["accuracy"] == round(2 / n, 3)
     assert d["by_condition"]["test"]["mean_confidence"] == 4.0
     hl = d["highlighting"]
-    assert hl["highlighted"]["n"] + hl["not_highlighted"]["n"] == 8
-    assert d["s1_errors"]["high-conf error"]["n"] == 8 and d["s1_errors"]["high-conf error"]["accuracy"] == 1.0
-    assert d["calibration"]["test"]["4"]["n"] == 8
-    assert d["prediction_vs_actual"]["test"] == {"predicted_pct": 25.0, "actual_pct": 100.0}
+    assert hl["highlighted"]["n"] + hl["not_highlighted"]["n"] == 2 * n
+    assert d["s1_errors"]["high-conf error"]["n"] == 2 * n and d["s1_errors"]["high-conf error"]["accuracy"] == 1.0
+    assert d["calibration"]["test"]["4"]["n"] == 2 * n
+    assert d["prediction_vs_actual"]["test"] == {"predicted_pct": round(100 / n, 3), "actual_pct": 100.0}
     assert d["beliefs"] == {"before_test": {"highlight": 2}, "after_test": {"test": 2}}
 
 
@@ -514,3 +518,18 @@ def test_each_session_starts_with_instructions(env):
     assert state(client, tok, skip_intro=False)["step"]["variant"] == "s2"
     steps = csv_rows(client, "steps")
     assert steps[0]["step_id"] == "intro" and float(steps[0]["elapsed_sec"]) == 75.0
+
+
+def test_real_content_is_comparable_across_languages():
+    """Every language has the same paragraphs/sentences and each fact sits in the same sentence,
+    so highlights and results can be compared across languages; every key accepts its own answer."""
+    for tid in main.TEXT_IDS:
+        t = main.CONTENT["texts"][tid]
+        shape = {l: [s["p"] for s in t["sentences"][l]] for l in main.LANGS}
+        assert len({tuple(v) for v in shape.values()}) == 1, (tid, shape)
+        for kind in ("practice", "final"):
+            for q in t[kind]:
+                assert len({tuple(q["_src"][l]) for l in main.LANGS}) == 1, (tid, q["id"])
+                assert all(len(q["_src"][l]) == 1 for l in main.LANGS), (tid, q["id"])
+                for l in main.LANGS:
+                    assert main.auto_score(q["answer"][l], q, l) == 1, (tid, q["id"], l)

@@ -5,8 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "Current timings in .env:"; grep -E '^(READ_SEC|HIGHLIGHT_SEC|TEST_MAX_SEC|BLOCK_SEC|FEEDBACK_MIN_SEC|DAY2_GAP_SEC|DAY9_GAP_SEC)=' .env | sed 's/^/  /'
-if ! grep -q '^DAY2_GAP_SEC=172800$' .env || ! grep -q '^DAY9_GAP_SEC=604800$' .env || ! grep -q '^READ_SEC=240$' .env; then
-  echo "WARNING: these are NOT the real study timings (READ_SEC=240, DAY2_GAP_SEC=172800, DAY9_GAP_SEC=604800)."
+if ! grep -q '^DAY2_GAP_SEC=172800$' .env || ! grep -q '^DAY9_GAP_SEC=604800$' .env || ! grep -qE '^READ_SEC=(210|240)$' .env; then
+  echo "WARNING: these are NOT the real study timings (READ_SEC=210, DAY2_GAP_SEC=172800, DAY9_GAP_SEC=604800)."
 fi
 read -r -p "Move the current database to data/backups and start empty? [y/N] " a
 [[ "$a" =~ ^[Yy] ]] || exit 1

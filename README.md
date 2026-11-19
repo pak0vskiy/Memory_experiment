@@ -40,8 +40,8 @@ Participants use it on iPad, phone or laptop, in **Russian, English or Korean**.
 
 | Session | Unlocks | Steps (in order) | Approx. time |
 |---|---|---|---|
-| 1 (`day0`) | At sign-up | `intro` how the platform works → `read1` read T1 (240 s) → `read2` read T2 (240 s) → `test` self-test on the routine text (max 180 s) → `feedback` correct answers (rest of a 240 s block, min 60 s) | ~15 min |
-| 2 (`day2`) | 48 h after Session 1 ends | `intro` how highlighting works, with a practice paragraph → `hl1` highlight + reread the usual text (240 s) → `hl2` reread highlights, can edit (240 s) → `test` self-test (routine text) → `feedback` → `predict` predicted final score per text + "which method works better?" | ~15 min |
+| 1 (`day0`) | At sign-up | `intro` how the platform works → `read1` read T1 (210 s) → `read2` read T2 (210 s) → `test` self-test on the routine text (max 150 s) → `feedback` correct answers (rest of a 210 s block, min 60 s) | ~12 min |
+| 2 (`day2`) | 48 h after Session 1 ends | `intro` how highlighting works, with a practice paragraph → `hl1` highlight + reread the usual text (210 s) → `hl2` reread highlights, can edit (210 s) → `test` self-test (routine text) → `feedback` → `predict` predicted final score per text + "which method works better?" | ~15 min |
 | 3 (`day9`) | 7 days after Session 2 ends | `intro` → `final1` final test on T1 → `final2` final test on T2 (answer + confidence 1–5 per question) → `survey` short questionnaire → results page with own scores + debrief | ~7–10 min |
 
 Every session starts with an untimed instructions screen (`intro`): Session 1 explains the platform (timers, Continue unlocks when time is up, no going back, text hidden in self-tests, confidence scale, stay on the page, reloads are safe, no notes, nickname + PIN, calendar reminder); Session 2 explains highlighting and lets participants try it on a practice paragraph that isn't saved; Session 3 explains the final test. The durations shown come from the server config, so they're always right. Time spent on each instructions screen is in `steps.csv`.
@@ -95,7 +95,7 @@ memory-study/
 │       ├── admin.html     # admin page shell
 │       └── admin.js       # admin dashboard: table, paired-score chart, answer grading, exports
 ├── content/
-│   └── content.json       # the two texts + practice and final questions in 3 languages (SAMPLE content now)
+│   └── content.json       # the two texts + practice and final questions in 3 languages (the real study texts)
 ├── tests/
 │   ├── test_api.py        # pytest: every study rule with the REAL timings (fake clock), ~1 s
 │   └── ui_walk.py         # Playwright: clicks through all 3 sessions (iPad or phone size), saves screenshots
@@ -189,20 +189,21 @@ Pages: `/` (participants), `/admin` (researcher), `/healthz`.
 
 - `fact` links a final question to the practice question about the same fact (used for the hypercorrection analysis). Final questions should be **reworded**, not copied from practice.
 - `source` (optional) links a question to the sentence that contains the answer: `{"en": "a few words from that sentence", ...}` (or a list of snippets). Without it the sentence is found through the `accept` keywords. The admin page warns when a final question matches no sentence or several, so the "was this fact highlighted?" columns are reliable.
-- `accept` = keywords. Use stems for Russian (`бочон` matches бочонок/бочонка). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
+- `accept` = keywords. Use stems for Russian (`ротоног` matches ротоногие/ротоногих). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. A keyword starting with `=` must equal the whole answer: Korean `=암` accepts 암 (cancer) but not 암컷 (female), `=산` accepts 산 (acid) but not 이산화탄소. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
 - A language is offered at sign-up only if **both** texts have a body in it.
-- Recommended: two texts of similar length (~250 words) and difficulty, 10–15 final questions each.
-- **Current content is SAMPLE** (water bears, bee dance; 4 practice + 4 final questions per text) for testing only.
+- **Current content (the real texts):** T1 *Mantis shrimp* and T2 *The naked mole-rat*, written as a matched pair: ~238 English words each, the same kinds of facts (a group/region, a habitat or body part, a named scientist, numbers, a technical term, a nickname/substance), 10 facts per text. Each fact has a self-test question (Sessions 1–2) and a reworded final question (Session 3).
+- **Comparable across languages:** en/ru/ko have the same paragraphs and the same number of sentences (T1: 2/5/3/5/1, T2: 3/5/4/3), each fact is in the same sentence in every language, tested numbers are digits everywhere, and no language gets extra hints. Within each language the two texts differ in length by ≤5%. `test_real_content_is_comparable_across_languages` checks this. Have a native speaker read each translation before the study.
+- Facts to double-check against the sources: Patek, Korff & Caldwell 2004 (*Nature*; 23 m/s, saddle spring), Thoen et al. 2014 (*Science*; 12 colour receptors, poor colour discrimination), Jarvis 1981 (*Science*; eusociality), Park et al. 2017 (*Science*; 18 min without oxygen, fructose). Colony size "about 80" is a typical average.
 
 ### Configuration (environment variables)
 
 | Variable | Real value | Meaning |
 |---|---|---|
 | `ADMIN_KEY` | long random string (12+ chars) | Admin password. `setup-vps.sh` generates one. |
-| `READ_SEC` | 240 | Session 1 reading time per text |
-| `HIGHLIGHT_SEC` | 240 | Each highlight round in Session 2 (2 rounds) |
-| `TEST_MAX_SEC` | 180 | Self-test answering limit (auto-submits) |
-| `BLOCK_SEC` | 240 | Self-test + feedback block total |
+| `READ_SEC` | 210 | Session 1 reading time per text (~2–3 reads of ~240 words; confirm in the pilot) |
+| `HIGHLIGHT_SEC` | 210 | Each highlight round in Session 2 (2 rounds). Keep equal to `READ_SEC` and `BLOCK_SEC`. |
+| `TEST_MAX_SEC` | 150 | Self-test answering limit (auto-submits) |
+| `BLOCK_SEC` | 210 | Self-test + feedback block total |
 | `FEEDBACK_MIN_SEC` | 60 | Minimum feedback time |
 | `DAY2_GAP_SEC` | 172800 | 48 h between Session 1 and 2 |
 | `DAY9_GAP_SEC` | 604800 | 7 days between Session 2 and 3 |
@@ -234,12 +235,12 @@ python tests/ui_walk.py shots ru tester_ru  # needs the server above; also en / 
 VIEWPORT=phone python tests/ui_walk.py shots ko tester_ko2
 ```
 
-`test_api.py` (39 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with the real 240 s / 48 h / 7 d values, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file. It also checks every analysis column: `items.csv` links each final answer to its practice history and its highlighted sentence, the highlight tap log, per-step timing/time away/scroll depth/auto-submit, the questionnaire, device info, the Insights numbers, re-marking practice answers, and upgrading a database created by the older version.
+`test_api.py` (44 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with real-length timers (240 s) and the 48 h / 7 d gaps, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file. It also checks every analysis column: `items.csv` links each final answer to its practice history and its highlighted sentence, the highlight tap log, per-step timing/time away/scroll depth/auto-submit, the questionnaire, device info, the Insights numbers, re-marking practice answers, and upgrading a database created by the older version.
 
-`ui_walk.py` clicks through all three sessions in a real browser and saves a screenshot of each screen. It also goes through the instructions screen of each session, highlights by tapping and by dragging with the mouse (on the practice paragraph and the real text), checks that a reload in the middle of the self-test keeps answers and confidence ratings, that untouched prediction sliders are refused, that the questionnaire can't be skipped, and that the calendar button is shown. It exits non-zero on any JavaScript error. It assumes the sample content (4 + 4 questions).
+`ui_walk.py` clicks through all three sessions in a real browser and saves a screenshot of each screen. It also goes through the instructions screen of each session, highlights by tapping and by dragging with the mouse (on the practice paragraph and the real text), checks that a reload in the middle of the self-test keeps answers and confidence ratings, that untouched prediction sliders are refused, that the questionnaire can't be skipped, and that the calendar button is shown. It exits non-zero on any JavaScript error.
 
 ### Verified
-- All 39 API tests pass.
+- All 44 API tests pass.
 - Highlighting with a simulated Apple Pencil (`pointerType: pen` via Chrome DevTools): drag paints, a drag starting on a highlight erases, a finger tap toggles exactly once, and each change is logged with its method. Real iPad + Pencil still to be tried.
 - Browser walkthrough with no JavaScript errors in **en, ru and ko**, at **iPad (820×1180) and phone (390×844)** size. Russian confidence labels were shortened so they fit at 360 px width ("Наугад / Не очень / 50 на 50 / Скорее да / Точно знаю"). Korean text breaks between words (`word-break: keep-all`).
 - Docker image builds, the container becomes `healthy`, and the browser walkthrough passes against the container.
@@ -345,7 +346,8 @@ print(it.groupby("condition")["final_confidence"].mean())
 
 ## 6. Open items / ideas
 
-- [ ] Replace sample content with the real texts in en / ru / ko (equivalent translations, similar difficulty). Check the admin page for content warnings afterwards.
+- [x] Real texts in en / ru / ko (mantis shrimp, naked mole-rat), matched across languages.
+- [ ] Native speakers check the Russian and Korean versions; verify the facts against the sources listed under *Content format*.
 - [ ] Run `deploy/setup-vps.sh` on the VPS, check Funnel, then pilot with 1–2 people on real devices.
 - [ ] Test on a real iPad and a phone (Safari): sentence tapping, keyboard, sliders, dark mode, calendar button.
 - [ ] Optional: drag-to-highlight across several sentences (currently tap per sentence, to avoid scroll conflicts on touch).

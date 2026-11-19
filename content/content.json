@@ -1,468 +1,1342 @@
 {
- "_readme": "SAMPLE CONTENT for testing. Replace with your own texts. Each text: title, body (paragraphs separated by a blank line, i.e. \\n\\n), practice questions (self-test on Day 0 and Day 2) and final questions (Day 9). 'accept' = keywords; an answer counts as correct if it contains any keyword after lowercasing and removing spaces/punctuation. Use word stems for Russian (e.g. 'бочон' matches бочонок/бочонка). 'fact' links a final question to the practice question about the same fact. A language missing from either text is hidden at sign-up. Optional 'source' on a question: {lang: 'a few words from the sentence that contains the answer'} (or a list of snippets). It links the fact to its sentence so you can tell whether it was highlighted; without it the sentence is found via the accept keywords. The admin page warns when that is ambiguous.",
+ "_readme": "Study texts. T1 = mantis shrimp, T2 = naked mole-rat; matched in length, structure and fact types; en/ru/ko have the same paragraphs and sentence count, with each fact in the same sentence. Each text has 10 facts: 'practice' (self-test, Sessions 1-2) and 'final' (Session 3, reworded) share 'fact' ids. 'accept' = keywords (an answer containing one counts as correct; numbers must be whole numbers; '=x' means the whole answer must be exactly x). 'source' = words from the sentence holding the answer (links facts to highlights). Do not edit after real participants have started.",
  "texts": {
   "T1": {
    "title": {
-    "en": "Water bears",
-    "ru": "Водяные медведи",
-    "ko": "물곰"
+    "en": "Mantis shrimp",
+    "ru": "Раки-богомолы",
+    "ko": "갯가재"
    },
    "body": {
-    "en": "Tardigrades, also called water bears, are tiny animals about half a millimetre long. They have eight stubby legs, each ending in small claws. Tardigrades live almost everywhere, from mountain moss to the deep sea.\n\nTheir most famous skill is surviving extreme conditions. When their home dries out, a tardigrade pulls in its legs and loses almost all of its water. In this dried state, called a tun, its metabolism nearly stops. It can stay like this for years and come back to life when water returns.\n\nIn 2007, scientists sent dried tardigrades into space on the FOTON-M3 mission. After ten days in the vacuum of space, some of them survived and later produced healthy young.",
-    "ru": "Тихоходки, которых также называют водяными медведями, — это крошечные животные длиной около половины миллиметра. У них восемь коротких ножек, и каждая заканчивается маленькими коготками. Тихоходки живут почти везде: от горного мха до морских глубин.\n\nИх самое известное умение — выживать в экстремальных условиях. Когда их среда пересыхает, тихоходка втягивает ножки и теряет почти всю воду. В таком высушенном состоянии, которое называется «бочонок», обмен веществ почти останавливается. Так она может пролежать годами и ожить, когда вода вернётся.\n\nВ 2007 году учёные отправили высушенных тихоходок в космос на аппарате «Фотон-М3». После десяти дней в космическом вакууме некоторые из них выжили и позже дали здоровое потомство.",
-    "ko": "완보동물은 '물곰'이라고도 불리는 아주 작은 동물로, 몸길이가 약 0.5밀리미터입니다. 짧은 다리가 여덟 개 있고, 각 다리 끝에는 작은 발톱이 있습니다. 완보동물은 높은 산의 이끼부터 깊은 바다까지 거의 모든 곳에 삽니다.\n\n완보동물의 가장 유명한 능력은 극한 환경에서 살아남는 것입니다. 사는 곳이 마르면 완보동물은 다리를 몸 안으로 집어넣고 몸속의 물을 거의 다 잃습니다. '툰(tun)'이라고 부르는 이 건조 상태에서는 신진대사가 거의 멈춥니다. 이 상태로 몇 년을 버티다가 물이 다시 생기면 깨어날 수 있습니다.\n\n2007년 과학자들은 건조된 완보동물을 '포톤-M3' 우주선에 실어 우주로 보냈습니다. 우주의 진공 상태에서 10일을 보낸 뒤에도 일부가 살아남았고, 나중에 건강한 새끼도 낳았습니다."
+    "en": "Despite their name, mantis shrimp are not true shrimp. They belong to a separate group of crustaceans called stomatopods, and they live in warm, shallow seas, where many of them dig burrows in coral reefs.\n\nMantis shrimp are famous for their front limbs. Some species, called spearers, have spiny limbs that stab soft prey such as fish. Others, called smashers, have heavy, club-shaped limbs that break open snails and crabs. In 2004, the biologist Sheila Patek filmed a smasher with a high-speed camera and found that its club moves at about 23 metres per second. To reach this speed, the animal stores energy in a saddle-shaped part of its limb that works like a spring, and then releases it all at once.\n\nThe strike is so fast that the pressure in the water in front of the club drops, and small bubbles of vapour appear. When these bubbles collapse, they hit the prey a second time, sometimes with a tiny flash of light. This effect is called cavitation.\n\nMantis shrimp also have unusual eyes. Each eye sits on its own moving stalk and can judge distance by itself. Humans have 3 types of colour receptor, but mantis shrimp have 12. Surprisingly, experiments showed that they are worse than humans at telling similar colours apart. Scientists think they recognise colours quickly instead of comparing them carefully.\n\nBecause their strike can cut a careless hand, fishermen call them thumb splitters.",
+    "ru": "Несмотря на название, раки-богомолы — вовсе не раки. Они относятся к отдельной группе ракообразных, которую называют ротоногими, и живут в тёплых мелких морях, где многие из них роют норы в коралловых рифах.\n\nРаки-богомолы знамениты своими передними конечностями. Одни виды, которых называют «копейщиками», пронзают мягкую добычу, например рыбу, конечностями с шипами. Другие, «молотобойцы», раскалывают улиток и крабов тяжёлыми конечностями в форме дубинки. В 2004 году биолог Шейла Патек сняла «молотобойца» скоростной камерой и выяснила, что его дубинка движется со скоростью около 23 метров в секунду. Чтобы достичь такой скорости, животное накапливает энергию в седловидной части конечности, которая работает как пружина, а затем высвобождает её разом.\n\nУдар настолько быстрый, что давление воды перед дубинкой падает и появляются маленькие пузырьки пара. Когда эти пузырьки схлопываются, они бьют по добыче второй раз, иногда с крошечной вспышкой света. Это явление называется кавитацией.\n\nГлаза у раков-богомолов тоже необычные. Каждый глаз сидит на собственном подвижном стебельке и может сам оценивать расстояние. У человека 3 типа цветовых рецепторов, а у раков-богомолов — 12. Как ни странно, опыты показали, что они хуже людей различают похожие цвета. Учёные думают, что они узнают цвета быстро, а не сравнивают их тщательно.\n\nПоскольку их удар может поранить неосторожную руку, рыбаки называют их «палецрезами».",
+    "ko": "갯가재는 이름과 달리 진짜 가재가 아닙니다. 갯가재는 구각류라는 별도의 갑각류 무리에 속하며, 따뜻하고 얕은 바다에 살고, 그중 많은 수가 산호초에 굴을 파고 삽니다.\n\n갯가재는 앞다리로 유명합니다. ‘창형’이라고 불리는 일부 종은 가시가 달린 앞다리로 물고기 같은 부드러운 먹이를 찌릅니다. ‘망치형’이라고 불리는 다른 종은 무겁고 곤봉 모양인 앞다리로 고둥과 게를 깨뜨립니다. 2004년 생물학자 실라 파텍은 고속 카메라로 망치형 갯가재를 촬영해, 곤봉이 초속 약 23미터로 움직인다는 것을 알아냈습니다. 이런 속도를 내기 위해 갯가재는 앞다리의 안장 모양 부분에 에너지를 모아 두었다가, 용수철처럼 한꺼번에 내보냅니다.\n\n타격이 너무 빨라서 곤봉 앞쪽의 물 압력이 떨어지고, 작은 증기 거품이 생깁니다. 이 거품이 터지면서 먹이를 한 번 더 때리고, 때로는 아주 작은 빛이 번쩍입니다. 이 현상을 캐비테이션이라고 합니다.\n\n갯가재는 눈도 특이합니다. 각 눈은 움직이는 자루 위에 따로 달려 있고, 한쪽 눈만으로도 거리를 판단할 수 있습니다. 사람에게는 색 수용체가 3종류 있지만, 갯가재에게는 12종류가 있습니다. 놀랍게도 실험 결과, 갯가재는 비슷한 색을 구별하는 능력이 사람보다 떨어졌습니다. 과학자들은 갯가재가 색을 꼼꼼히 비교하는 대신 빠르게 알아본다고 생각합니다.\n\n갯가재의 타격은 부주의한 손을 벨 수 있어서, 어부들은 갯가재를 ‘엄지 가르개’라고 부릅니다."
    },
    "practice": [
     {
      "id": "p1",
-     "fact": "legs",
+     "fact": "group",
      "q": {
-      "en": "How many legs does a tardigrade have?",
-      "ru": "Сколько ножек у тихоходки?",
-      "ko": "완보동물의 다리는 몇 개입니까?"
+      "en": "What group of crustaceans do mantis shrimp belong to?",
+      "ru": "К какой группе ракообразных относятся раки-богомолы?",
+      "ko": "갯가재는 어떤 갑각류 무리에 속합니까?"
      },
      "answer": {
-      "en": "Eight",
-      "ru": "Восемь",
-      "ko": "여덟 개"
+      "en": "Stomatopods",
+      "ru": "Ротоногие",
+      "ko": "구각류"
      },
      "accept": {
       "en": [
-       "8",
-       "eight"
+       "stomatopod"
       ],
       "ru": [
-       "8",
-       "восем"
+       "ротоног",
+       "stomatopod"
       ],
       "ko": [
-       "8",
-       "여덟"
+       "구각",
+       "stomatopod"
       ]
+     },
+     "source": {
+      "en": "group of crustaceans called stomatopods",
+      "ru": "называют ротоногими",
+      "ko": "구각류라는"
      }
     },
     {
      "id": "p2",
-     "fact": "tun",
+     "fact": "reefs",
      "q": {
-      "en": "What is the dried state of a tardigrade called?",
-      "ru": "Как называется высушенное состояние тихоходки?",
-      "ko": "완보동물의 건조 상태를 무엇이라고 부릅니까?"
+      "en": "Where do many mantis shrimp dig their burrows?",
+      "ru": "Где многие раки-богомолы роют норы?",
+      "ko": "많은 갯가재는 어디에 굴을 팝니까?"
      },
      "answer": {
-      "en": "A tun",
-      "ru": "«Бочонок»",
-      "ko": "툰(tun)"
+      "en": "In coral reefs",
+      "ru": "В коралловых рифах",
+      "ko": "산호초"
      },
      "accept": {
       "en": [
-       "tun"
+       "coral",
+       "reef"
       ],
       "ru": [
-       "бочон",
-       "tun"
+       "корал",
+       "риф"
       ],
       "ko": [
-       "툰",
-       "tun"
+       "산호"
       ]
+     },
+     "source": {
+      "en": "group of crustaceans called stomatopods",
+      "ru": "называют ротоногими",
+      "ko": "구각류라는"
      }
     },
     {
      "id": "p3",
-     "fact": "year",
+     "fact": "prey",
      "q": {
-      "en": "In which year were tardigrades sent into space?",
-      "ru": "В каком году тихоходок отправили в космос?",
-      "ko": "완보동물은 몇 년에 우주로 보내졌습니까?"
+      "en": "What do smashers break open with their club-shaped limbs?",
+      "ru": "Что раскалывают «молотобойцы» своими конечностями-дубинками?",
+      "ko": "망치형 갯가재는 곤봉 모양 앞다리로 무엇을 깨뜨립니까?"
      },
      "answer": {
-      "en": "2007",
-      "ru": "В 2007 году",
-      "ko": "2007년"
+      "en": "Snails and crabs",
+      "ru": "Улиток и крабов",
+      "ko": "고둥과 게"
      },
      "accept": {
       "en": [
-       "2007"
+       "snail",
+       "crab"
       ],
       "ru": [
-       "2007"
+       "улит",
+       "краб"
       ],
       "ko": [
-       "2007"
+       "고둥",
+       "달팽이",
+       "소라",
+       "=게"
       ]
+     },
+     "source": {
+      "en": "break open snails and crabs",
+      "ru": "раскалывают улиток и крабов",
+      "ko": "고둥과 게를"
      }
     },
     {
      "id": "p4",
-     "fact": "size",
+     "fact": "scientist",
      "q": {
-      "en": "How long is a tardigrade?",
-      "ru": "Какой длины тихоходка?",
-      "ko": "완보동물의 몸길이는 얼마입니까?"
+      "en": "Which biologist filmed a mantis shrimp strike in 2004?",
+      "ru": "Какой биолог снял удар рака-богомола в 2004 году?",
+      "ko": "2004년에 갯가재의 타격을 촬영한 생물학자는 누구입니까?"
      },
      "answer": {
-      "en": "About half a millimetre",
-      "ru": "Около половины миллиметра",
-      "ko": "약 0.5밀리미터"
+      "en": "Sheila Patek",
+      "ru": "Шейла Патек",
+      "ko": "실라 파텍"
      },
      "accept": {
       "en": [
-       "05",
-       "half"
+       "patek"
       ],
       "ru": [
-       "05",
-       "половин"
+       "патек",
+       "patek"
       ],
       "ko": [
-       "05"
+       "파텍",
+       "patek"
       ]
+     },
+     "source": {
+      "en": "Sheila Patek filmed",
+      "ru": "Шейла Патек сняла",
+      "ko": "실라 파텍은"
+     }
+    },
+    {
+     "id": "p5",
+     "fact": "speed",
+     "q": {
+      "en": "How fast does a smasher's club move?",
+      "ru": "С какой скоростью движется дубинка «молотобойца»?",
+      "ko": "망치형 갯가재의 곤봉은 얼마나 빨리 움직입니까?"
+     },
+     "answer": {
+      "en": "About 23 metres per second",
+      "ru": "Около 23 метров в секунду",
+      "ko": "초속 약 23미터"
+     },
+     "accept": {
+      "en": [
+       "23"
+      ],
+      "ru": [
+       "23"
+      ],
+      "ko": [
+       "23"
+      ]
+     },
+     "source": {
+      "en": "Sheila Patek filmed",
+      "ru": "Шейла Патек сняла",
+      "ko": "실라 파텍은"
+     }
+    },
+    {
+     "id": "p6",
+     "fact": "saddle",
+     "q": {
+      "en": "What shape is the spring-like part of the limb?",
+      "ru": "Какой формы часть конечности, которая работает как пружина?",
+      "ko": "용수철처럼 작동하는 앞다리 부분은 어떤 모양입니까?"
+     },
+     "answer": {
+      "en": "A saddle",
+      "ru": "Седло (седловидная)",
+      "ko": "안장"
+     },
+     "accept": {
+      "en": [
+       "saddle"
+      ],
+      "ru": [
+       "седл"
+      ],
+      "ko": [
+       "안장"
+      ]
+     },
+     "source": {
+      "en": "saddle-shaped part",
+      "ru": "седловидной части",
+      "ko": "안장 모양"
+     }
+    },
+    {
+     "id": "p7",
+     "fact": "cavitation",
+     "q": {
+      "en": "What is the effect of the collapsing bubbles called?",
+      "ru": "Как называется явление со схлопывающимися пузырьками?",
+      "ko": "거품이 터지는 이 현상을 무엇이라고 합니까?"
+     },
+     "answer": {
+      "en": "Cavitation",
+      "ru": "Кавитация",
+      "ko": "캐비테이션"
+     },
+     "accept": {
+      "en": [
+       "cavitat"
+      ],
+      "ru": [
+       "кавитац",
+       "cavitat"
+      ],
+      "ko": [
+       "캐비테이션",
+       "공동",
+       "cavitat"
+      ]
+     },
+     "source": {
+      "en": "This effect is called cavitation",
+      "ru": "Это явление называется кавитацией",
+      "ko": "캐비테이션이라고"
+     }
+    },
+    {
+     "id": "p8",
+     "fact": "receptors",
+     "q": {
+      "en": "How many types of colour receptor do mantis shrimp have?",
+      "ru": "Сколько типов цветовых рецепторов у раков-богомолов?",
+      "ko": "갯가재에게는 색 수용체가 몇 종류 있습니까?"
+     },
+     "answer": {
+      "en": "12",
+      "ru": "12",
+      "ko": "12종류"
+     },
+     "accept": {
+      "en": [
+       "12",
+       "twelve"
+      ],
+      "ru": [
+       "12",
+       "двенадцат"
+      ],
+      "ko": [
+       "12",
+       "열두",
+       "십이"
+      ]
+     },
+     "source": {
+      "en": "but mantis shrimp have 12",
+      "ru": "а у раков-богомолов — 12",
+      "ko": "12종류가"
+     }
+    },
+    {
+     "id": "p9",
+     "fact": "distance",
+     "q": {
+      "en": "What can each mantis shrimp eye judge by itself?",
+      "ru": "Что может сам оценивать каждый глаз рака-богомола?",
+      "ko": "갯가재의 각 눈은 혼자서 무엇을 판단할 수 있습니까?"
+     },
+     "answer": {
+      "en": "Distance",
+      "ru": "Расстояние",
+      "ko": "거리"
+     },
+     "accept": {
+      "en": [
+       "distance",
+       "depth"
+      ],
+      "ru": [
+       "расстоян",
+       "дистанц",
+       "глубин"
+      ],
+      "ko": [
+       "거리",
+       "깊이"
+      ]
+     },
+     "source": {
+      "en": "can judge distance by itself",
+      "ru": "может сам оценивать расстояние",
+      "ko": "거리를 판단할"
+     }
+    },
+    {
+     "id": "p10",
+     "fact": "nickname",
+     "q": {
+      "en": "What do fishermen call mantis shrimp?",
+      "ru": "Как рыбаки называют раков-богомолов?",
+      "ko": "어부들은 갯가재를 무엇이라고 부릅니까?"
+     },
+     "answer": {
+      "en": "Thumb splitters",
+      "ru": "«Палецрезы»",
+      "ko": "엄지 가르개"
+     },
+     "accept": {
+      "en": [
+       "thumb"
+      ],
+      "ru": [
+       "палец",
+       "пальц"
+      ],
+      "ko": [
+       "엄지"
+      ]
+     },
+     "source": {
+      "en": "fishermen call them thumb splitters",
+      "ru": "рыбаки называют их",
+      "ko": "어부들은"
      }
     }
    ],
    "final": [
     {
      "id": "f1",
-     "fact": "legs",
+     "fact": "group",
      "q": {
-      "en": "Tardigrades walk on how many legs?",
-      "ru": "На скольких ножках передвигаются тихоходки?",
-      "ko": "완보동물은 몇 개의 다리로 걸어 다닙니까?"
+      "en": "Mantis shrimp are not true shrimp. What are they classified as?",
+      "ru": "Раки-богомолы — не настоящие раки. К каким ракообразным их относят?",
+      "ko": "갯가재는 진짜 가재가 아닙니다. 어떤 무리로 분류됩니까?"
      },
      "answer": {
-      "en": "Eight",
-      "ru": "Восемь",
-      "ko": "여덟 개"
+      "en": "Stomatopods",
+      "ru": "Ротоногие",
+      "ko": "구각류"
      },
      "accept": {
       "en": [
-       "8",
-       "eight"
+       "stomatopod"
       ],
       "ru": [
-       "8",
-       "восем"
+       "ротоног",
+       "stomatopod"
       ],
       "ko": [
-       "8",
-       "여덟"
+       "구각",
+       "stomatopod"
       ]
+     },
+     "source": {
+      "en": "group of crustaceans called stomatopods",
+      "ru": "называют ротоногими",
+      "ko": "구각류라는"
      }
     },
     {
      "id": "f2",
-     "fact": "tun",
+     "fact": "reefs",
      "q": {
-      "en": "What name is given to a tardigrade that has dried out with its legs pulled in?",
-      "ru": "Как называют тихоходку, которая высохла и втянула ножки?",
-      "ko": "다리를 집어넣고 바싹 마른 완보동물의 상태를 무엇이라고 합니까?"
+      "en": "In what kind of habitat do mantis shrimp often make their burrows?",
+      "ru": "В какой среде раки-богомолы часто устраивают свои норы?",
+      "ko": "갯가재는 주로 어떤 곳에 굴을 만듭니까?"
      },
      "answer": {
-      "en": "A tun",
-      "ru": "«Бочонок»",
-      "ko": "툰(tun)"
+      "en": "In coral reefs",
+      "ru": "В коралловых рифах",
+      "ko": "산호초"
      },
      "accept": {
       "en": [
-       "tun"
+       "coral",
+       "reef"
       ],
       "ru": [
-       "бочон",
-       "tun"
+       "корал",
+       "риф"
       ],
       "ko": [
-       "툰",
-       "tun"
+       "산호"
       ]
+     },
+     "source": {
+      "en": "group of crustaceans called stomatopods",
+      "ru": "называют ротоногими",
+      "ko": "구각류라는"
      }
     },
     {
      "id": "f3",
-     "fact": "year",
+     "fact": "prey",
      "q": {
-      "en": "When did tardigrades travel to space?",
-      "ru": "Когда тихоходки побывали в космосе?",
-      "ko": "완보동물이 우주에 간 것은 언제입니까?"
+      "en": "What kind of prey do mantis shrimp with club-shaped limbs feed on?",
+      "ru": "Какой добычей питаются раки-богомолы с конечностями в форме дубинки?",
+      "ko": "곤봉 모양 앞다리를 가진 갯가재는 어떤 먹이를 먹습니까?"
      },
      "answer": {
-      "en": "2007",
-      "ru": "В 2007 году",
-      "ko": "2007년"
+      "en": "Snails and crabs",
+      "ru": "Улиток и крабов",
+      "ko": "고둥과 게"
      },
      "accept": {
       "en": [
-       "2007"
+       "snail",
+       "crab"
       ],
       "ru": [
-       "2007"
+       "улит",
+       "краб"
       ],
       "ko": [
-       "2007"
+       "고둥",
+       "달팽이",
+       "소라",
+       "=게"
       ]
+     },
+     "source": {
+      "en": "break open snails and crabs",
+      "ru": "раскалывают улиток и крабов",
+      "ko": "고둥과 게를"
      }
     },
     {
      "id": "f4",
-     "fact": "size",
+     "fact": "scientist",
      "q": {
-      "en": "Roughly what size is a tardigrade?",
-      "ru": "Примерно какого размера тихоходка?",
-      "ko": "완보동물의 크기는 대략 어느 정도입니까?"
+      "en": "Who measured the speed of the strike with a high-speed camera?",
+      "ru": "Кто измерил скорость удара с помощью скоростной камеры?",
+      "ko": "고속 카메라로 타격 속도를 측정한 사람은 누구입니까?"
      },
      "answer": {
-      "en": "About half a millimetre",
-      "ru": "Около половины миллиметра",
-      "ko": "약 0.5밀리미터"
+      "en": "Sheila Patek",
+      "ru": "Шейла Патек",
+      "ko": "실라 파텍"
      },
      "accept": {
       "en": [
-       "05",
-       "half"
+       "patek"
       ],
       "ru": [
-       "05",
-       "половин"
+       "патек",
+       "patek"
       ],
       "ko": [
-       "05"
+       "파텍",
+       "patek"
       ]
+     },
+     "source": {
+      "en": "Sheila Patek filmed",
+      "ru": "Шейла Патек сняла",
+      "ko": "실라 파텍은"
+     }
+    },
+    {
+     "id": "f5",
+     "fact": "speed",
+     "q": {
+      "en": "What strike speed did the high-speed film show?",
+      "ru": "Какую скорость удара показала скоростная съёмка?",
+      "ko": "고속 촬영에서 측정된 타격 속도는 얼마였습니까?"
+     },
+     "answer": {
+      "en": "About 23 metres per second",
+      "ru": "Около 23 метров в секунду",
+      "ko": "초속 약 23미터"
+     },
+     "accept": {
+      "en": [
+       "23"
+      ],
+      "ru": [
+       "23"
+      ],
+      "ko": [
+       "23"
+      ]
+     },
+     "source": {
+      "en": "Sheila Patek filmed",
+      "ru": "Шейла Патек сняла",
+      "ko": "실라 파텍은"
+     }
+    },
+    {
+     "id": "f6",
+     "fact": "saddle",
+     "q": {
+      "en": "The limb stores energy in a part that works like a spring. What is it shaped like?",
+      "ru": "Энергия запасается в части конечности, похожей на пружину. На что похожа её форма?",
+      "ko": "에너지를 모아 두는 앞다리 부분은 무엇을 닮은 모양입니까?"
+     },
+     "answer": {
+      "en": "A saddle",
+      "ru": "Седло (седловидная)",
+      "ko": "안장"
+     },
+     "accept": {
+      "en": [
+       "saddle"
+      ],
+      "ru": [
+       "седл"
+      ],
+      "ko": [
+       "안장"
+      ]
+     },
+     "source": {
+      "en": "saddle-shaped part",
+      "ru": "седловидной части",
+      "ko": "안장 모양"
+     }
+    },
+    {
+     "id": "f7",
+     "fact": "cavitation",
+     "q": {
+      "en": "Vapour bubbles collapse and hit the prey a second time. What is this effect called?",
+      "ru": "Пузырьки пара схлопываются и бьют добычу второй раз. Как называется это явление?",
+      "ko": "증기 거품이 터지면서 먹이를 한 번 더 때리는 현상의 이름은 무엇입니까?"
+     },
+     "answer": {
+      "en": "Cavitation",
+      "ru": "Кавитация",
+      "ko": "캐비테이션"
+     },
+     "accept": {
+      "en": [
+       "cavitat"
+      ],
+      "ru": [
+       "кавитац",
+       "cavitat"
+      ],
+      "ko": [
+       "캐비테이션",
+       "공동",
+       "cavitat"
+      ]
+     },
+     "source": {
+      "en": "This effect is called cavitation",
+      "ru": "Это явление называется кавитацией",
+      "ko": "캐비테이션이라고"
+     }
+    },
+    {
+     "id": "f8",
+     "fact": "receptors",
+     "q": {
+      "en": "Humans have 3 types of colour receptor. How many do mantis shrimp have?",
+      "ru": "У человека 3 типа цветовых рецепторов. А сколько у раков-богомолов?",
+      "ko": "사람의 색 수용체는 3종류입니다. 갯가재는 몇 종류입니까?"
+     },
+     "answer": {
+      "en": "12",
+      "ru": "12",
+      "ko": "12종류"
+     },
+     "accept": {
+      "en": [
+       "12",
+       "twelve"
+      ],
+      "ru": [
+       "12",
+       "двенадцат"
+      ],
+      "ko": [
+       "12",
+       "열두",
+       "십이"
+      ]
+     },
+     "source": {
+      "en": "but mantis shrimp have 12",
+      "ru": "а у раков-богомолов — 12",
+      "ko": "12종류가"
+     }
+    },
+    {
+     "id": "f9",
+     "fact": "distance",
+     "q": {
+      "en": "Without help from the other eye, what can a single mantis shrimp eye estimate?",
+      "ru": "Что один глаз рака-богомола может определить без помощи другого?",
+      "ko": "갯가재의 한쪽 눈은 다른 눈의 도움 없이 무엇을 가늠할 수 있습니까?"
+     },
+     "answer": {
+      "en": "Distance",
+      "ru": "Расстояние",
+      "ko": "거리"
+     },
+     "accept": {
+      "en": [
+       "distance",
+       "depth"
+      ],
+      "ru": [
+       "расстоян",
+       "дистанц",
+       "глубин"
+      ],
+      "ko": [
+       "거리",
+       "깊이"
+      ]
+     },
+     "source": {
+      "en": "can judge distance by itself",
+      "ru": "может сам оценивать расстояние",
+      "ko": "거리를 판단할"
+     }
+    },
+    {
+     "id": "f10",
+     "fact": "nickname",
+     "q": {
+      "en": "Which nickname comes from the way mantis shrimp can cut people's hands?",
+      "ru": "Какое прозвище раки-богомолы получили за то, что могут поранить руку?",
+      "ko": "사람의 손을 벨 수 있어서 갯가재에게 붙은 별명은 무엇입니까?"
+     },
+     "answer": {
+      "en": "Thumb splitters",
+      "ru": "«Палецрезы»",
+      "ko": "엄지 가르개"
+     },
+     "accept": {
+      "en": [
+       "thumb"
+      ],
+      "ru": [
+       "палец",
+       "пальц"
+      ],
+      "ko": [
+       "엄지"
+      ]
+     },
+     "source": {
+      "en": "fishermen call them thumb splitters",
+      "ru": "рыбаки называют их",
+      "ko": "어부들은"
      }
     }
    ]
   },
   "T2": {
    "title": {
-    "en": "The bee dance",
-    "ru": "Танец пчёл",
-    "ko": "꿀벌의 춤"
+    "en": "The naked mole-rat",
+    "ru": "Голый землекоп",
+    "ko": "벌거숭이두더지쥐"
    },
    "body": {
-    "en": "When a honeybee finds a good patch of flowers, it returns to the hive and performs a waggle dance. The dance tells other bees where the food is.\n\nThe bee runs in a straight line while shaking its body, then loops back and repeats. The angle of the straight run shows the direction of the food compared with the direction of the sun. The length of the waggle run shows the distance: a longer waggle means the flowers are farther away.\n\nThe Austrian scientist Karl von Frisch decoded this dance. In 1973 he shared the Nobel Prize in Physiology or Medicine for this work.",
-    "ru": "Когда медоносная пчела находит хорошее место с цветами, она возвращается в улей и исполняет виляющий танец. Этот танец сообщает другим пчёлам, где находится еда.\n\nПчела бежит по прямой, покачивая телом, затем делает петлю и повторяет движение. Угол прямого пробега показывает направление к еде относительно направления на солнце. Длина виляющего пробега показывает расстояние: чем дольше пчела виляет, тем дальше цветы.\n\nАвстрийский учёный Карл фон Фриш расшифровал этот танец. В 1973 году он разделил Нобелевскую премию по физиологии и медицине за эту работу.",
-    "ko": "꿀벌은 꽃이 많은 좋은 장소를 찾으면 벌집으로 돌아와 '꼬리춤'을 춥니다. 이 춤은 다른 벌들에게 먹이가 어디에 있는지 알려 줍니다.\n\n벌은 몸을 흔들면서 직선으로 달린 뒤, 원을 그리며 돌아와 같은 동작을 반복합니다. 직선으로 달리는 방향의 각도는 태양의 방향을 기준으로 먹이가 어느 쪽에 있는지 나타냅니다. 몸을 흔들며 달리는 시간이 길수록 꽃이 더 멀리 있다는 뜻입니다.\n\n오스트리아의 과학자 카를 폰 프리슈가 이 춤의 의미를 밝혀냈습니다. 그는 이 연구로 1973년 노벨 생리의학상을 공동 수상했습니다."
+    "en": "The naked mole-rat is a small rodent from the dry grasslands of East Africa, mainly Kenya, Ethiopia and Somalia. It is about 10 centimetres long, almost hairless and nearly blind, and it spends its whole life in underground tunnels. Its lips close behind its large front teeth, so it can dig with its teeth without getting soil in its mouth.\n\nNaked mole-rats live in colonies, like bees or ants. A colony usually has about 80 members, but only one female, the queen, has babies. The others dig tunnels, collect food or defend the colony. In 1981, the zoologist Jennifer Jarvis showed that this way of living, called eusociality, exists in a mammal. Before that, it was known almost only in insects.\n\nThese animals are also unusual for their health. Most rodents of their size live for 3 or 4 years, but naked mole-rats can live for more than 30 years, and they rarely get cancer. Their crowded tunnels have little fresh air, so they cope well with low oxygen. In a 2017 experiment, they survived 18 minutes with no oxygen at all by using a different sugar, fructose, for energy.\n\nUnlike most mammals, naked mole-rats hardly control their own body temperature. When they get cold, they huddle together or move to warmer tunnels near the surface. They also feel no pain from acid, which may help them live in air that contains a lot of carbon dioxide.",
+    "ru": "Голый землекоп — небольшой грызун из сухих саванн Восточной Африки, в основном Кении, Эфиопии и Сомали. Его длина около 10 сантиметров, у него почти нет шерсти, он почти слепой и всю жизнь проводит в подземных ходах. Его губы смыкаются позади больших передних зубов, поэтому он может копать зубами, не набирая в рот землю.\n\nГолые землекопы живут колониями, как пчёлы или муравьи. Обычно в колонии около 80 особей, но детёнышей приносит только одна самка — царица. Остальные роют ходы, добывают пищу или защищают колонию. В 1981 году зоолог Дженнифер Джарвис показала, что такой образ жизни, называемый эусоциальностью, бывает и у млекопитающих. До этого он был известен почти только у насекомых.\n\nЭти животные необычны и своим здоровьем. Большинство грызунов такого размера живут 3–4 года, а голые землекопы могут жить больше 30 лет и редко болеют раком. В их тесных ходах мало свежего воздуха, поэтому они хорошо переносят недостаток кислорода. В эксперименте 2017 года они выжили 18 минут совсем без кислорода, используя для энергии другой сахар — фруктозу.\n\nВ отличие от большинства млекопитающих, голые землекопы почти не регулируют температуру своего тела. Когда им холодно, они сбиваются в кучу или переходят в более тёплые ходы ближе к поверхности. Они также не чувствуют боли от кислоты, что, возможно, помогает им жить в воздухе с большим количеством углекислого газа.",
+    "ko": "벌거숭이두더지쥐는 동아프리카, 주로 케냐, 에티오피아, 소말리아의 건조한 초원에 사는 작은 설치류입니다. 몸길이는 약 10센티미터이고, 털이 거의 없고 눈도 거의 보이지 않으며, 평생을 땅속 굴에서 보냅니다. 입술이 커다란 앞니 뒤쪽에서 닫히기 때문에, 입에 흙이 들어가지 않게 이빨로 땅을 팔 수 있습니다.\n\n벌거숭이두더지쥐는 벌이나 개미처럼 무리를 지어 삽니다. 한 무리는 보통 80마리 정도이지만, 새끼를 낳는 암컷은 ‘여왕’ 한 마리뿐입니다. 나머지는 굴을 파거나, 먹이를 모으거나, 무리를 지킵니다. 1981년 동물학자 제니퍼 자비스는 진사회성이라고 불리는 이런 생활 방식이 포유류에도 있다는 것을 밝혔습니다. 그전까지 이런 생활 방식은 거의 곤충에서만 알려져 있었습니다.\n\n이 동물은 건강 면에서도 특이합니다. 비슷한 크기의 설치류는 대부분 3~4년을 살지만, 벌거숭이두더지쥐는 30년 넘게 살 수 있고 암에 거의 걸리지 않습니다. 붐비는 굴에는 신선한 공기가 적어서, 산소가 부족해도 잘 견딥니다. 2017년 실험에서 이들은 산소가 전혀 없는 상태로 18분을 버텼는데, 에너지원으로 다른 당인 과당을 사용했습니다.\n\n대부분의 포유류와 달리, 벌거숭이두더지쥐는 체온을 거의 조절하지 못합니다. 추우면 서로 몸을 붙여 모이거나, 지표면 가까이의 따뜻한 굴로 옮겨 갑니다. 또한 산성 물질에 통증을 느끼지 않는데, 이는 이산화탄소가 많은 공기 속에서 사는 데 도움이 될 수 있습니다."
    },
    "practice": [
     {
      "id": "p1",
-     "fact": "name",
+     "fact": "region",
      "q": {
-      "en": "What is the bee's dance called?",
-      "ru": "Как называется танец пчелы?",
-      "ko": "꿀벌의 춤을 무엇이라고 부릅니까?"
+      "en": "In which part of the world do naked mole-rats live?",
+      "ru": "В какой части света живут голые землекопы?",
+      "ko": "벌거숭이두더지쥐는 세계의 어느 지역에 삽니까?"
      },
      "answer": {
-      "en": "The waggle dance",
-      "ru": "Виляющий танец",
-      "ko": "꼬리춤"
+      "en": "East Africa (Kenya, Ethiopia, Somalia)",
+      "ru": "Восточная Африка (Кения, Эфиопия, Сомали)",
+      "ko": "동아프리카 (케냐, 에티오피아, 소말리아)"
      },
      "accept": {
       "en": [
-       "waggle"
+       "africa",
+       "kenya",
+       "ethiopia",
+       "somalia"
       ],
       "ru": [
-       "виляющ"
+       "африк",
+       "кени",
+       "эфиоп",
+       "сомал"
       ],
       "ko": [
-       "꼬리"
+       "아프리카",
+       "케냐",
+       "에티오피아",
+       "소말리아"
       ]
      },
      "source": {
-      "en": "performs a waggle dance",
-      "ru": "исполняет виляющий танец",
-      "ko": "벌집으로 돌아와"
+      "en": "East Africa",
+      "ru": "Восточной Африки",
+      "ko": "동아프리카"
      }
     },
     {
      "id": "p2",
-     "fact": "sun",
+     "fact": "lips",
      "q": {
-      "en": "The angle of the straight run shows direction compared with what?",
-      "ru": "Относительно чего угол прямого пробега показывает направление?",
-      "ko": "직선으로 달리는 각도는 무엇을 기준으로 방향을 나타냅니까?"
+      "en": "What lets naked mole-rats dig with their teeth without getting soil in their mouth?",
+      "ru": "Что позволяет голым землекопам копать зубами, не набирая в рот землю?",
+      "ko": "벌거숭이두더지쥐가 입에 흙이 들어가지 않게 이빨로 땅을 팔 수 있는 이유는 무엇입니까?"
      },
      "answer": {
-      "en": "The sun",
-      "ru": "Солнца",
-      "ko": "태양"
+      "en": "Their lips (they close behind the teeth)",
+      "ru": "Губы (смыкаются позади зубов)",
+      "ko": "입술 (앞니 뒤에서 닫힘)"
      },
      "accept": {
       "en": [
-       "sun"
+       "lip"
       ],
       "ru": [
-       "солнц"
+       "губ"
       ],
       "ko": [
-       "태양"
+       "입술"
       ]
+     },
+     "source": {
+      "en": "Its lips close behind",
+      "ru": "Его губы смыкаются",
+      "ko": "입술이"
      }
     },
     {
      "id": "p3",
-     "fact": "distance",
+     "fact": "queen",
      "q": {
-      "en": "What does a longer waggle run mean?",
-      "ru": "Что означает более длинный виляющий пробег?",
-      "ko": "몸을 흔들며 달리는 시간이 길면 무엇을 뜻합니까?"
+      "en": "Which member of the colony has babies?",
+      "ru": "Кто в колонии приносит детёнышей?",
+      "ko": "무리에서 새끼를 낳는 것은 누구입니까?"
      },
      "answer": {
-      "en": "The flowers are farther away",
-      "ru": "Цветы находятся дальше",
-      "ko": "꽃이 더 멀리 있다"
+      "en": "The queen",
+      "ru": "Царица",
+      "ko": "여왕"
      },
      "accept": {
       "en": [
-       "far",
-       "distan"
+       "queen"
       ],
       "ru": [
-       "дальше",
-       "далек",
-       "расстоян"
+       "цариц",
+       "королев",
+       "матк"
       ],
       "ko": [
-       "멀",
-       "거리"
+       "여왕"
       ]
+     },
+     "source": {
+      "en": "the queen, has babies",
+      "ru": "только одна самка — царица",
+      "ko": "‘여왕’ 한 마리뿐"
      }
     },
     {
      "id": "p4",
      "fact": "scientist",
      "q": {
-      "en": "Who decoded the bee dance?",
-      "ru": "Кто расшифровал танец пчёл?",
-      "ko": "꿀벌 춤의 의미를 밝혀낸 사람은 누구입니까?"
+      "en": "Which zoologist showed in 1981 that naked mole-rats live in colonies like bees and ants?",
+      "ru": "Какой зоолог в 1981 году показал, что голые землекопы живут колониями, как пчёлы и муравьи?",
+      "ko": "1981년에 벌거숭이두더지쥐가 벌이나 개미처럼 무리 지어 산다는 것을 밝힌 동물학자는 누구입니까?"
      },
      "answer": {
-      "en": "Karl von Frisch",
-      "ru": "Карл фон Фриш",
-      "ko": "카를 폰 프리슈"
+      "en": "Jennifer Jarvis",
+      "ru": "Дженнифер Джарвис",
+      "ko": "제니퍼 자비스"
      },
      "accept": {
       "en": [
-       "frisch"
+       "jarvis"
       ],
       "ru": [
-       "фриш"
+       "джарвис",
+       "jarvis"
       ],
       "ko": [
-       "프리슈",
-       "프리쉬"
+       "자비스",
+       "jarvis"
       ]
+     },
+     "source": {
+      "en": "Jennifer Jarvis showed",
+      "ru": "Дженнифер Джарвис показала",
+      "ko": "제니퍼 자비스는"
+     }
+    },
+    {
+     "id": "p5",
+     "fact": "lifespan",
+     "q": {
+      "en": "How long can naked mole-rats live?",
+      "ru": "Сколько могут жить голые землекопы?",
+      "ko": "벌거숭이두더지쥐는 얼마나 오래 살 수 있습니까?"
+     },
+     "answer": {
+      "en": "More than 30 years",
+      "ru": "Больше 30 лет",
+      "ko": "30년 넘게"
+     },
+     "accept": {
+      "en": [
+       "30",
+       "thirty"
+      ],
+      "ru": [
+       "30",
+       "тридцат"
+      ],
+      "ko": [
+       "30",
+       "삼십"
+      ]
+     },
+     "source": {
+      "en": "more than 30 years",
+      "ru": "больше 30 лет",
+      "ko": "30년 넘게"
+     }
+    },
+    {
+     "id": "p6",
+     "fact": "eusociality",
+     "q": {
+      "en": "What is the scientific term for the way naked mole-rats live in colonies?",
+      "ru": "Как по-научному называется образ жизни голых землекопов колониями?",
+      "ko": "벌거숭이두더지쥐가 무리 지어 사는 방식을 과학 용어로 무엇이라고 합니까?"
+     },
+     "answer": {
+      "en": "Eusociality",
+      "ru": "Эусоциальность",
+      "ko": "진사회성"
+     },
+     "accept": {
+      "en": [
+       "eusocial"
+      ],
+      "ru": [
+       "эусоциал",
+       "eusocial"
+      ],
+      "ko": [
+       "진사회",
+       "eusocial"
+      ]
+     },
+     "source": {
+      "en": "called eusociality",
+      "ru": "называемый эусоциальностью",
+      "ko": "진사회성이라고"
+     }
+    },
+    {
+     "id": "p7",
+     "fact": "cancer",
+     "q": {
+      "en": "Which disease do naked mole-rats rarely get?",
+      "ru": "Какой болезнью голые землекопы почти не болеют?",
+      "ko": "벌거숭이두더지쥐가 거의 걸리지 않는 병은 무엇입니까?"
+     },
+     "answer": {
+      "en": "Cancer",
+      "ru": "Рак",
+      "ko": "암"
+     },
+     "accept": {
+      "en": [
+       "cancer",
+       "tumo"
+      ],
+      "ru": [
+       "рак",
+       "опухол"
+      ],
+      "ko": [
+       "=암",
+       "암에",
+       "암이",
+       "암은",
+       "암을",
+       "종양",
+       "cancer"
+      ]
+     },
+     "source": {
+      "en": "they rarely get cancer",
+      "ru": "редко болеют раком",
+      "ko": "암에 거의"
+     }
+    },
+    {
+     "id": "p8",
+     "fact": "anoxia",
+     "q": {
+      "en": "How long did naked mole-rats survive with no oxygen in the 2017 experiment?",
+      "ru": "Сколько голые землекопы продержались совсем без кислорода в эксперименте 2017 года?",
+      "ko": "2017년 실험에서 벌거숭이두더지쥐는 산소 없이 얼마나 버텼습니까?"
+     },
+     "answer": {
+      "en": "18 minutes",
+      "ru": "18 минут",
+      "ko": "18분"
+     },
+     "accept": {
+      "en": [
+       "18"
+      ],
+      "ru": [
+       "18"
+      ],
+      "ko": [
+       "18"
+      ]
+     },
+     "source": {
+      "en": "survived 18 minutes",
+      "ru": "выжили 18 минут",
+      "ko": "18분을"
+     }
+    },
+    {
+     "id": "p9",
+     "fact": "fructose",
+     "q": {
+      "en": "Which sugar did they use for energy when there was no oxygen?",
+      "ru": "Какой сахар они использовали для энергии, когда не было кислорода?",
+      "ko": "산소가 없을 때 이들은 에너지를 얻기 위해 어떤 당을 사용했습니까?"
+     },
+     "answer": {
+      "en": "Fructose",
+      "ru": "Фруктоза",
+      "ko": "과당"
+     },
+     "accept": {
+      "en": [
+       "fructos"
+      ],
+      "ru": [
+       "фруктоз",
+       "fructos"
+      ],
+      "ko": [
+       "과당",
+       "프럭토스",
+       "fructos"
+      ]
+     },
+     "source": {
+      "en": "survived 18 minutes",
+      "ru": "выжили 18 минут",
+      "ko": "18분을"
+     }
+    },
+    {
+     "id": "p10",
+     "fact": "acid",
+     "q": {
+      "en": "What do naked mole-rats feel no pain from?",
+      "ru": "От чего голые землекопы не чувствуют боли?",
+      "ko": "벌거숭이두더지쥐는 무엇에 통증을 느끼지 않습니까?"
+     },
+     "answer": {
+      "en": "Acid",
+      "ru": "Кислота",
+      "ko": "산성 물질 (산)"
+     },
+     "accept": {
+      "en": [
+       "acid"
+      ],
+      "ru": [
+       "кислот"
+      ],
+      "ko": [
+       "산성",
+       "=산",
+       "acid"
+      ]
+     },
+     "source": {
+      "en": "feel no pain from acid",
+      "ru": "не чувствуют боли от кислоты",
+      "ko": "산성 물질에"
      }
     }
    ],
    "final": [
     {
      "id": "f1",
-     "fact": "name",
+     "fact": "region",
      "q": {
-      "en": "What is the name of the dance bees use to share where food is?",
-      "ru": "Как называется танец, которым пчёлы сообщают, где еда?",
-      "ko": "꿀벌이 먹이 위치를 알릴 때 추는 춤의 이름은 무엇입니까?"
+      "en": "Which region of the world are naked mole-rats from?",
+      "ru": "Из какого региона мира родом голые землекопы?",
+      "ko": "벌거숭이두더지쥐는 세계의 어느 지역 출신입니까?"
      },
      "answer": {
-      "en": "The waggle dance",
-      "ru": "Виляющий танец",
-      "ko": "꼬리춤"
+      "en": "East Africa (Kenya, Ethiopia, Somalia)",
+      "ru": "Восточная Африка (Кения, Эфиопия, Сомали)",
+      "ko": "동아프리카 (케냐, 에티오피아, 소말리아)"
      },
      "accept": {
       "en": [
-       "waggle"
+       "africa",
+       "kenya",
+       "ethiopia",
+       "somalia"
       ],
       "ru": [
-       "виляющ"
+       "африк",
+       "кени",
+       "эфиоп",
+       "сомал"
       ],
       "ko": [
-       "꼬리"
+       "아프리카",
+       "케냐",
+       "에티오피아",
+       "소말리아"
       ]
      },
      "source": {
-      "en": "performs a waggle dance",
-      "ru": "исполняет виляющий танец",
-      "ko": "벌집으로 돌아와"
+      "en": "East Africa",
+      "ru": "Восточной Африки",
+      "ko": "동아프리카"
      }
     },
     {
      "id": "f2",
-     "fact": "sun",
+     "fact": "lips",
      "q": {
-      "en": "The direction of the straight run is measured against the position of what?",
-      "ru": "Направление прямого пробега отсчитывается от положения чего?",
-      "ko": "직선 달리기의 방향은 무엇의 위치를 기준으로 합니까?"
+      "en": "Which body part keeps soil out of their mouth while they dig?",
+      "ru": "Какая часть тела не пускает землю в рот, когда они копают?",
+      "ko": "땅을 팔 때 입에 흙이 들어가지 않게 막아 주는 신체 부위는 무엇입니까?"
      },
      "answer": {
-      "en": "The sun",
-      "ru": "Солнца",
-      "ko": "태양"
+      "en": "Their lips (they close behind the teeth)",
+      "ru": "Губы (смыкаются позади зубов)",
+      "ko": "입술 (앞니 뒤에서 닫힘)"
      },
      "accept": {
       "en": [
-       "sun"
+       "lip"
       ],
       "ru": [
-       "солнц"
+       "губ"
       ],
       "ko": [
-       "태양"
+       "입술"
       ]
+     },
+     "source": {
+      "en": "Its lips close behind",
+      "ru": "Его губы смыкаются",
+      "ko": "입술이"
      }
     },
     {
      "id": "f3",
-     "fact": "distance",
+     "fact": "queen",
      "q": {
-      "en": "What does the length of the waggle run tell other bees?",
-      "ru": "О чём другим пчёлам говорит длина виляющего пробега?",
-      "ko": "몸을 흔들며 달리는 시간은 다른 벌들에게 무엇을 알려 줍니까?"
+      "en": "What is the only breeding female in a colony called?",
+      "ru": "Как называют единственную самку колонии, которая приносит потомство?",
+      "ko": "무리에서 유일하게 새끼를 낳는 암컷을 무엇이라고 부릅니까?"
      },
      "answer": {
-      "en": "How far away the food is",
-      "ru": "Как далеко еда",
-      "ko": "먹이까지의 거리"
+      "en": "The queen",
+      "ru": "Царица",
+      "ko": "여왕"
      },
      "accept": {
       "en": [
-       "far",
-       "distan"
+       "queen"
       ],
       "ru": [
-       "дальше",
-       "далек",
-       "расстоян"
+       "цариц",
+       "королев",
+       "матк"
       ],
       "ko": [
-       "멀",
-       "거리"
+       "여왕"
       ]
+     },
+     "source": {
+      "en": "the queen, has babies",
+      "ru": "только одна самка — царица",
+      "ko": "‘여왕’ 한 마리뿐"
      }
     },
     {
      "id": "f4",
      "fact": "scientist",
      "q": {
-      "en": "Which scientist won a Nobel Prize for decoding the bee dance?",
-      "ru": "Какой учёный получил Нобелевскую премию за расшифровку танца пчёл?",
-      "ko": "꿀벌 춤을 해독해 노벨상을 받은 과학자는 누구입니까?"
+      "en": "Who discovered the insect-like colony life of naked mole-rats?",
+      "ru": "Кто открыл, что голые землекопы живут колониями, как насекомые?",
+      "ko": "벌거숭이두더지쥐의 곤충 같은 무리 생활을 발견한 사람은 누구입니까?"
      },
      "answer": {
-      "en": "Karl von Frisch",
-      "ru": "Карл фон Фриш",
-      "ko": "카를 폰 프리슈"
+      "en": "Jennifer Jarvis",
+      "ru": "Дженнифер Джарвис",
+      "ko": "제니퍼 자비스"
      },
      "accept": {
       "en": [
-       "frisch"
+       "jarvis"
       ],
       "ru": [
-       "фриш"
+       "джарвис",
+       "jarvis"
       ],
       "ko": [
-       "프리슈",
-       "프리쉬"
+       "자비스",
+       "jarvis"
       ]
+     },
+     "source": {
+      "en": "Jennifer Jarvis showed",
+      "ru": "Дженнифер Джарвис показала",
+      "ko": "제니퍼 자비스는"
+     }
+    },
+    {
+     "id": "f5",
+     "fact": "lifespan",
+     "q": {
+      "en": "What is the maximum lifespan of a naked mole-rat?",
+      "ru": "Какова наибольшая продолжительность жизни голого землекопа?",
+      "ko": "벌거숭이두더지쥐의 최대 수명은 얼마입니까?"
+     },
+     "answer": {
+      "en": "More than 30 years",
+      "ru": "Больше 30 лет",
+      "ko": "30년 넘게"
+     },
+     "accept": {
+      "en": [
+       "30",
+       "thirty"
+      ],
+      "ru": [
+       "30",
+       "тридцат"
+      ],
+      "ko": [
+       "30",
+       "삼십"
+      ]
+     },
+     "source": {
+      "en": "more than 30 years",
+      "ru": "больше 30 лет",
+      "ko": "30년 넘게"
+     }
+    },
+    {
+     "id": "f6",
+     "fact": "eusociality",
+     "q": {
+      "en": "Which term describes a society in which only one female breeds and the rest work for the group?",
+      "ru": "Как называется устройство сообщества, где размножается только одна самка, а остальные работают на группу?",
+      "ko": "한 암컷만 새끼를 낳고 나머지는 무리를 위해 일하는 사회를 무엇이라고 부릅니까?"
+     },
+     "answer": {
+      "en": "Eusociality",
+      "ru": "Эусоциальность",
+      "ko": "진사회성"
+     },
+     "accept": {
+      "en": [
+       "eusocial"
+      ],
+      "ru": [
+       "эусоциал",
+       "eusocial"
+      ],
+      "ko": [
+       "진사회",
+       "eusocial"
+      ]
+     },
+     "source": {
+      "en": "called eusociality",
+      "ru": "называемый эусоциальностью",
+      "ko": "진사회성이라고"
+     }
+    },
+    {
+     "id": "f7",
+     "fact": "cancer",
+     "q": {
+      "en": "Naked mole-rats are unusually resistant to which illness?",
+      "ru": "К какому заболеванию голые землекопы необычно устойчивы?",
+      "ko": "벌거숭이두더지쥐는 어떤 질병에 유난히 강합니까?"
+     },
+     "answer": {
+      "en": "Cancer",
+      "ru": "Рак",
+      "ko": "암"
+     },
+     "accept": {
+      "en": [
+       "cancer",
+       "tumo"
+      ],
+      "ru": [
+       "рак",
+       "опухол"
+      ],
+      "ko": [
+       "=암",
+       "암에",
+       "암이",
+       "암은",
+       "암을",
+       "종양",
+       "cancer"
+      ]
+     },
+     "source": {
+      "en": "they rarely get cancer",
+      "ru": "редко болеют раком",
+      "ko": "암에 거의"
+     }
+    },
+    {
+     "id": "f8",
+     "fact": "anoxia",
+     "q": {
+      "en": "In the experiment without any oxygen, how long did the animals last?",
+      "ru": "Сколько времени животные выдержали в опыте, где кислорода не было вовсе?",
+      "ko": "산소가 전혀 없는 실험에서 이 동물들은 얼마 동안 견뎠습니까?"
+     },
+     "answer": {
+      "en": "18 minutes",
+      "ru": "18 минут",
+      "ko": "18분"
+     },
+     "accept": {
+      "en": [
+       "18"
+      ],
+      "ru": [
+       "18"
+      ],
+      "ko": [
+       "18"
+      ]
+     },
+     "source": {
+      "en": "survived 18 minutes",
+      "ru": "выжили 18 минут",
+      "ko": "18분을"
+     }
+    },
+    {
+     "id": "f9",
+     "fact": "fructose",
+     "q": {
+      "en": "What energy source did the animals switch to without oxygen?",
+      "ru": "На какой источник энергии переключились животные без кислорода?",
+      "ko": "산소가 없을 때 이 동물들은 어떤 에너지원으로 바꿨습니까?"
+     },
+     "answer": {
+      "en": "Fructose",
+      "ru": "Фруктоза",
+      "ko": "과당"
+     },
+     "accept": {
+      "en": [
+       "fructos"
+      ],
+      "ru": [
+       "фруктоз",
+       "fructos"
+      ],
+      "ko": [
+       "과당",
+       "프럭토스",
+       "fructos"
+      ]
+     },
+     "source": {
+      "en": "survived 18 minutes",
+      "ru": "выжили 18 минут",
+      "ko": "18분을"
+     }
+    },
+    {
+     "id": "f10",
+     "fact": "acid",
+     "q": {
+      "en": "Which substance does not cause naked mole-rats any pain?",
+      "ru": "Какое вещество не вызывает у голых землекопов боли?",
+      "ko": "어떤 물질이 벌거숭이두더지쥐에게 통증을 일으키지 않습니까?"
+     },
+     "answer": {
+      "en": "Acid",
+      "ru": "Кислота",
+      "ko": "산성 물질 (산)"
+     },
+     "accept": {
+      "en": [
+       "acid"
+      ],
+      "ru": [
+       "кислот"
+      ],
+      "ko": [
+       "산성",
+       "=산",
+       "acid"
+      ]
+     },
+     "source": {
+      "en": "feel no pain from acid",
+      "ru": "не чувствуют боли от кислоты",
+      "ko": "산성 물질에"
      }
     }
    ]

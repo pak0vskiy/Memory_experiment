@@ -1,7 +1,7 @@
 """Click through all three sessions in an iPad-sized browser and save screenshots.
 
-Needs the server running in fast test mode (see README, "Run locally") and the SAMPLE content
-(it assumes 4 practice and 4 final questions per text).
+Needs the server running in fast test mode (see README, "Run locally"). Works with any number
+of questions per text.
 Usage: python tests/ui_walk.py [screenshot_dir] [en|ru|ko] [nickname]
 Env: BASE_URL (default http://localhost:8077), VIEWPORT=ipad|phone, CHROME_PATH (browser binary).
 Exits non-zero if a check fails or the page throws a JavaScript error.
@@ -79,13 +79,13 @@ with sync_playwright() as p:
     page.wait_for_selector(".confs")
     inputs = page.locator(".answer")
     for i in range(inputs.count()):
-        inputs.nth(i).fill(["8", "tun", "2006", ""][i] if LANG == "en" else ["8", "x", "2007", ""][i])
-        page.locator(".confs").nth(i).locator(".conf").nth([4, 3, 4, 0][i]).click()
+        inputs.nth(i).fill(["12", "coral", "x", ""][i % 4])
+        page.locator(".confs").nth(i).locator(".conf").nth([4, 3, 4, 0][i % 4]).click()
     shot(page, "03_test")
     # A reload mid-test must keep typed answers and confidence ratings.
     page.reload()
     page.wait_for_selector(".confs")
-    assert page.locator(".answer").first.input_value() == "8", "answers lost after reload"
+    assert page.locator(".answer").first.input_value() == "12", "answers lost after reload"
     assert page.locator(".confs").first.locator(".conf.on").count() == 1, "confidence lost after reload"
     page.locator(".actions .btn.primary").click()
     page.wait_for_selector(".q.ok, .q.bad")
@@ -147,7 +147,7 @@ with sync_playwright() as p:
         page.wait_for_selector(".answer")
         inputs = page.locator(".answer")
         for i in range(inputs.count()):
-            inputs.nth(i).fill(["8", "tun", "2007", "half a mm"][i] if LANG == "en" else "?")
+            inputs.nth(i).fill(["12", "18", "?", "x"][i % 4])
             page.locator(".confs").nth(i).locator(".conf").nth(i % 5).click()
         page.locator(".actions .btn.primary").click()
         page.wait_for_timeout(800)

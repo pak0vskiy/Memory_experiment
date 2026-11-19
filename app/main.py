@@ -42,10 +42,10 @@ def env_int(name, default):
 
 
 # Durations in seconds. Override with environment variables for piloting (see README).
-READ_SEC = env_int("READ_SEC", 240)          # Day 0: first reading of each text
-HIGHLIGHT_SEC = env_int("HIGHLIGHT_SEC", 240)  # Day 2: each highlight + reread round (2 rounds)
-TEST_MAX_SEC = env_int("TEST_MAX_SEC", 180)  # self-test answering limit
-BLOCK_SEC = env_int("BLOCK_SEC", 240)        # self-test + feedback block total (matches one reading round)
+READ_SEC = env_int("READ_SEC", 210)          # Day 0: first reading of each text (~2-3 reads of ~240 words)
+HIGHLIGHT_SEC = env_int("HIGHLIGHT_SEC", 210)  # Day 2: each highlight + reread round (2 rounds)
+TEST_MAX_SEC = env_int("TEST_MAX_SEC", 150)  # self-test answering limit (10 questions)
+BLOCK_SEC = env_int("BLOCK_SEC", 210)        # self-test + feedback block total (matches one reading round)
 FEEDBACK_MIN_SEC = env_int("FEEDBACK_MIN_SEC", 60)
 DAY2_GAP = env_int("DAY2_GAP_SEC", 48 * 3600)
 DAY9_GAP = env_int("DAY9_GAP_SEC", 7 * 24 * 3600)
@@ -218,7 +218,7 @@ def validate_content(raw):
                         nk = norm(k)
                         # A single Latin/Cyrillic letter matches almost any answer. (One Hangul
                         # syllable such as 툰 is a real word, so it's allowed.)
-                        if len(nk) == 1 and not nk.isdigit() and not ("\uac00" <= nk <= "\ud7a3"):
+                        if len(nk) == 1 and not nk.isdigit() and not ("\uac00" <= nk <= "\ud7a3") and not k.startswith("="):
                             out.append(f"{where}: keyword '{k}' ({l}) is a single letter and will match almost anything")
                 if kind == "practice":
                     practice_facts.add(q.get("fact", q.get("id")))
@@ -297,7 +297,10 @@ def norm(s):
 
 def key_matches(answer, key):
     """Keyword match. Text keys match anywhere (so Russian stems work). Number keys must be a
-    whole number in the answer: '8' matches '8 legs' but not '18' or '2008'."""
+    whole number in the answer: '8' matches '8 legs' but not '18' or '2008'. A key starting with
+    '=' must equal the whole answer: '=암' accepts '암' but not '암컷' (useful for one-syllable words)."""
+    if key.startswith("="):
+        return bool(norm(key[1:])) and norm(answer) == norm(key[1:])
     k = norm(key)
     if not k:
         return False

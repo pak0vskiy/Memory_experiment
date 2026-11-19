@@ -1092,6 +1092,42 @@ async def admin_tester(request: Request, x_admin_key: str = Header(None)):
     return {"ok": True}
 
 
+# every table that holds participant data, keyed by pid
+PARTICIPANT_TABLES = ("answers", "highlights", "highlight_log", "predictions", "events", "steps", "survey")
+
+
+@app.post("/api/admin/delete")
+async def admin_delete(request: Request, x_admin_key: str = Header(None)):
+    """Permanently delete one participant and all their data (test accounts, withdrawal requests).
+    The nickname must be typed again as confirmation. A backup of the whole database is written to
+    data/backups/ first, so a mistake can be undone."""
+    require_admin(x_admin_key)
+    body = await request.json()
+    with db() as con:
+        p = con.execute("SELECT * FROM participants WHERE id=?", (int(body.get("id", 0)),)).fetchone()
+    if not p:
+        raise HTTPException(404, "no such participant")
+    if str(body.get("confirm", "")).strip().lower() != p["nickname"].lower():
+        raise HTTPException(400, "type the nickname exactly to confirm")
+    # backup through its own connection, before the write transaction (a connection that holds the
+    # write lock can't back itself up)
+    (DATA_DIR / "backups").mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w-]+", "_", p["nickname"])[:30]
+    backup = DATA_DIR / "backups" / f"study-before-delete-{safe}-{time.strftime('%Y-%m-%d_%H%M%S')}.db"
+    src, dst = connect(), sqlite3.connect(backup)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    with db() as con:
+        for table in PARTICIPANT_TABLES:
+            con.execute(f"DELETE FROM {table} WHERE pid=?", (p["id"],))
+        con.execute("DELETE FROM participants WHERE id=?", (p["id"],))
+    log.warning("admin deleted participant %s (id %s); backup: %s", p["nickname"], p["id"], backup.name)
+    return {"ok": True, "backup": backup.name}
+
+
 @app.post("/api/admin/reload-content")
 def admin_reload(x_admin_key: str = Header(None)):
     require_admin(x_admin_key)

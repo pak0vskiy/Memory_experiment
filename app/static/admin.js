@@ -123,7 +123,14 @@
           h("button", { class: "btn small", onclick: async () => {
             if (!p.excluded && !confirm(`Exclude ${p.nickname} from the analysis? (Data is kept; you can include them again.)`)) return;
             await api("/api/admin/exclude", { id: p.id, excluded: !p.excluded }); load(); } },
-            p.excluded ? "Include" : "Exclude"));
+            p.excluded ? "Include" : "Exclude"),
+          " ",
+          h("button", { class: "btn small danger", onclick: async () => {
+            const typed = prompt(`Permanently delete ${p.nickname} and all their answers?\n\nA backup of the database is saved first (data/backups on the server).\n\nType the nickname to confirm:`);
+            if (typed === null) return;
+            try { const r = await api("/api/admin/delete", { id: p.id, confirm: typed }); alert(`Deleted. Backup: ${r.backup}`); }
+            catch (e) { alert("Not deleted: " + e.message); }
+            load(); } }, "Delete"));
         return h("tr", { class: (isDue ? "due " : "") + (p.excluded ? "excluded" : "") },
           h("td", {}, p.nickname, p.tester ? h("span", { class: "badge" }, "TEST") : null), actions,
           h("td", {}, p.lang), h("td", {}, p.group), h("td", {}, p.status),

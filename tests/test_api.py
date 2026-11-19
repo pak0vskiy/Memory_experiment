@@ -661,3 +661,22 @@ def test_language_can_change_only_before_the_first_text(env):
     assert client.post("/api/lang", headers=hdr(tok), json={"lang": "en"}).status_code == 409
     ev = [r for r in csv_rows(client, "events") if r["type"] == "lang_change"]
     assert len(ev) == 1 and json.loads(ev[0]["detail"]) == {"from": "en", "to": "mn"}
+
+
+def test_admin_can_delete_a_participant_with_confirmation(env):
+    client, clock = env
+    run_all(client, clock, nick="910goat")
+    keep = join(client, nick="keeper").json()["token"]
+    con = sqlite3.connect(main.DB_PATH)
+    pid = con.execute("SELECT id FROM participants WHERE nickname='910goat'").fetchone()[0]
+    assert client.post("/api/admin/delete", json={"id": pid, "confirm": "910goat"}).status_code == 403
+    assert client.post("/api/admin/delete", headers=ADMIN, json={"id": pid, "confirm": "910goa"}).status_code == 400
+    r = client.post("/api/admin/delete", headers=ADMIN, json={"id": pid, "confirm": "910GOAT"})
+    assert r.status_code == 200
+    for table in ("participants",) + main.PARTICIPANT_TABLES:
+        col = "id" if table == "participants" else "pid"
+        assert con.execute(f"SELECT COUNT(*) FROM {table} WHERE {col}=?", (pid,)).fetchone()[0] == 0, table
+    assert con.execute("SELECT nickname FROM participants").fetchall() == [("keeper",)]
+    backup = main.DATA_DIR / "backups" / r.json()["backup"]
+    assert sqlite3.connect(backup).execute("SELECT COUNT(*) FROM participants WHERE nickname='910goat'").fetchone()[0] == 1
+    assert client.get("/api/state", headers=hdr(keep)).status_code == 200

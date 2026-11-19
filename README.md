@@ -44,6 +44,8 @@ Participants use it on iPad, phone or laptop, in **English, Russian, Korean, Sim
 | 2 (`day2`) | 48 h after Session 1 ends | `intro` how highlighting works, with a practice paragraph → `hl1` highlight + reread the usual text (210 s) → `hl2` reread highlights, can edit (210 s) → `test` self-test (routine text) → `feedback` → `predict` predicted final score per text + "which method works better?" | ~15 min |
 | 3 (`day9`) | 7 days after Session 2 ends | `intro` → `final1` final test on T1 → `final2` final test on T2 (answer + confidence 1–5 per question) → `survey` short questionnaire → results page with own scores + debrief | ~7–10 min |
 
+**Language:** chosen at sign-up, and it can still be changed (menu at the top, or the language buttons on the Session 1 instructions screen) until the first text is shown. After that it's locked, so texts and questions stay in one language (`lang_change` events record any switch).
+
 Every session starts with an untimed instructions screen (`intro`): Session 1 explains the platform (timers, Continue unlocks when time is up, no going back, text hidden in self-tests, confidence scale, stay on the page, reloads are safe, no notes, nickname + PIN, calendar reminder); Session 2 explains highlighting and lets participants try it on a practice paragraph that isn't saved; Session 3 explains the final test. The durations shown come from the server config, so they're always right. Time spent on each instructions screen is in `steps.csv`.
 
 **Highlighting works per word**, like a highlighter pen. (For Chinese the unit is a character; runs of digits or Latin letters such as "2004" stay together.) Students mark single words, phrases or whole sentences, often too much (Winchell, Lan & Mozer 2020; the CHI 2024 constrained-highlighting study), so free word-level marking is the realistic "usual way".
@@ -154,6 +156,7 @@ Participant endpoints authenticate with the header `X-Token: <token>`.
 | POST | `/api/login` | `{nickname, pin}` → `{token}`. After 8 wrong PINs for a nickname: `429` for 15 min. |
 | GET | `/api/state` | Current stage + step payload, or `wait` (`unlock_at`), or `done` (scores) |
 | POST | `/api/complete` | `{step_id, data}`. Data per step type: highlight `{selected:[i]}`, test `{answers:[{qid, answer, confidence, rt_ms}]}`, final `{answers:[{qid, answer, confidence, rt_ms, first_ms, edits}]}`, predict `{pred:{T1:n, T2:n}, belief}`, survey `{answers:{item: value}}`; highlight `{words:[k], log:[{a:"on"|"off", f, to, t, m:"touch"|"pen"|"mouse"|"key"}]}` (older sentence-level `{selected:[i]}` is still accepted), every step takes `scroll_max` |
+| POST | `/api/lang` | `{lang}`: change language; only before the first text is shown, else `409` |
 | POST | `/api/event` | `{type: "hidden"\|"visible"\|"device", step_id, detail?}` |
 | GET | `/reminder.ics?at=<unix>&n=2\|3&lang=` | Calendar event for the next session (no personal data) |
 

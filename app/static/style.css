@@ -168,3 +168,11 @@ ol.howto li { margin: 0 0 12px; padding-left: 4px; }
 .text.dragging, .text.dragging * { cursor: crosshair; }
 
 .msg.info { background: color-mix(in srgb, var(--hl) 45%, var(--card)); color: var(--ink); margin: 0 0 16px; }
+
+/* language menu in the header (only while the language can still be changed) */
+.langsel {
+  font: inherit; font-size: 15px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); max-width: 9.5em; flex: none;
+}
+.card.langpick { padding: 14px 16px; }
+.card.langpick .label { margin-top: 0; }

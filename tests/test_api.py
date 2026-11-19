@@ -644,3 +644,20 @@ def test_feedback_says_when_the_self_test_ran_out_of_time(env):
         clock.advance(180 if auto else 60)
         complete(client, tok, "test", {**practice_answers(text), "auto": auto})
         assert state(client, tok)["step"]["auto_submitted"] is auto
+
+
+def test_language_can_change_only_before_the_first_text(env):
+    client, clock = env
+    tok = join(client, nick="polyglot", lang="en").json()["token"]
+    st = state(client, tok, skip_intro=False)
+    assert st["step"]["type"] == "intro" and st["lang_locked"] is False
+    assert client.post("/api/lang", headers=hdr(tok), json={"lang": "xx"}).status_code == 400
+    assert client.post("/api/lang", headers=hdr(tok), json={"lang": "mn"}).status_code == 200
+    st = state(client, tok, skip_intro=False)
+    assert st["lang"] == "mn" and st["step"]["type"] == "intro"
+    complete(client, tok, "intro")
+    st = state(client, tok, skip_intro=False)
+    assert st["lang_locked"] is True and st["step"]["title"] == main.CONTENT["texts"]["T1"]["title"]["mn"]
+    assert client.post("/api/lang", headers=hdr(tok), json={"lang": "en"}).status_code == 409
+    ev = [r for r in csv_rows(client, "events") if r["type"] == "lang_change"]
+    assert len(ev) == 1 and json.loads(ev[0]["detail"]) == {"from": "en", "to": "mn"}

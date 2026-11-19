@@ -633,7 +633,7 @@ def state(x_token: str = Header(None)):
     with db() as con:
         p = get_participant(con, x_token)
         stage, unlock = current_stage(p, now)
-        base = {"nickname": p["nickname"], "lang": p["lang"], "server_now": now}
+        base = {"nickname": p["nickname"], "lang": p["lang"], "server_now": now, "lang_locked": lang_locked(p)}
         if stage == "wait":
             nxt = "day2" if p["day2_done"] is None else "day9"
             return {**base, "stage": "wait", "next": nxt, "unlock_at": unlock}
@@ -806,6 +806,30 @@ def away_seconds(evs, now):
 
 
 EVENT_TYPES = ("hidden", "visible", "device")
+
+
+def lang_locked(p):
+    """The study language can change only before the first text is shown (Session 1, still on its
+    instructions screen). Afterwards texts and questions must stay in one language."""
+    return not (p["day0_done"] is None and (p["stage"] is None or (p["stage"] == "day0" and p["step"] == 0)))
+
+
+@app.post("/api/lang")
+async def change_lang(request: Request, x_token: str = Header(None)):
+    body = await request.json()
+    lang = body.get("lang")
+    if lang not in LANGS or not lang_available(lang):
+        raise HTTPException(400, "language not available")
+    with db() as con:
+        p = get_participant(con, x_token)
+        if lang_locked(p):
+            raise HTTPException(409, "language can't be changed after the study has started")
+        if lang != p["lang"]:
+            con.execute("UPDATE participants SET lang=? WHERE id=?", (lang, p["id"]))
+            con.execute("INSERT INTO events (pid,stage,step,type,ts,detail) VALUES (?,?,?,?,?,?)",
+                        (p["id"], p["stage"], "intro", "lang_change", time.time(),
+                         json.dumps({"from": p["lang"], "to": lang})))
+    return {"ok": True, "lang": lang}
 
 
 @app.post("/api/event")

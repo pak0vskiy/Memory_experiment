@@ -3,6 +3,8 @@
   const $timer = document.getElementById("timer");
   const $progress = document.getElementById("progress");
   const $brand = document.getElementById("brand");
+  const $langsel = document.getElementById("langsel");
+  let joinMode = "join";    // which form the sign-up page shows ("join" or "login")
 
   let lang = localStorage.getItem("ms_lang") || guessLang();
   let token = localStorage.getItem("ms_token");
@@ -56,7 +58,30 @@
     document.documentElement.lang = l;
     $brand.textContent = t("brand");
     document.title = t("brand");
+    updateLangSelect();
   }
+
+  // ------------------------------------------------------------ language switching
+  // The language can be changed on the sign-up/login page and, after signing up, until the first
+  // text is shown (the server decides: state.lang_locked). Afterwards the menu is hidden, because
+  // texts and questions have to stay in one language for the results to be comparable.
+  const canChangeLang = () => !token || (current && current.lang_locked === false);
+  function updateLangSelect() {
+    const langs = window.__langs || ["en", "ru", "ko", "zh", "mn"];
+    if ($langsel.options.length !== langs.length) {
+      $langsel.replaceChildren(...langs.map(l => h("option", { value: l }, I18N[l] ? I18N[l].langName : l)));
+    }
+    $langsel.value = lang;
+    $langsel.classList.toggle("hidden", !canChangeLang());
+  }
+  async function changeLang(l) {
+    if (l === lang) return;
+    if (!token) { setLang(l); renderJoin(joinMode); return; }
+    try { await api("/api/lang", { lang: l }); }
+    catch (e) { /* locked meanwhile or offline: the refresh below shows the true state */ }
+    refresh();
+  }
+  $langsel.addEventListener("change", () => changeLang($langsel.value));
 
   function stopTimer() {
     if (tick) clearInterval(tick);
@@ -128,7 +153,7 @@
       return;
     }
     clockOffset = current.server_now - Date.now() / 1000;
-    setLang(current.lang);
+    setLang(current.lang);          // also shows/hides the language menu (current.lang_locked)
     const sessionNo = { day0: 1, day2: 2, day9: 3 }[current.stage];
     $progress.textContent = sessionNo ? `${t("session", { n: sessionNo })} · ${current.step_index + 1}/${current.step_count}` : "";
     document.body.classList.toggle("insession", !!sessionNo);
@@ -185,6 +210,7 @@
     stopTimer();
     $progress.textContent = "";
     document.body.classList.remove("insession");
+    current = null;
     renderJoin("login");
   }
 
@@ -234,11 +260,13 @@
   // ------------------------------------------------------------ join / login
   function renderJoin(mode) {
     stopTimer();
+    joinMode = mode;
+    updateLangSelect();
     const langs = window.__langs || ["en", "ru", "ko", "zh", "mn"];
     const langSel = h("div", { class: "langs", role: "group", "aria-label": t("language") },
       langs.map(l => h("button", {
         class: "chip" + (l === lang ? " on" : ""), type: "button",
-        onclick: () => { setLang(l); renderJoin(mode); },
+        onclick: () => changeLang(l),
       }, I18N[l].langName)));
 
     const nick = h("input", { id: "nick", autocomplete: "off", autocapitalize: "off", spellcheck: "false", maxlength: "30" });
@@ -646,7 +674,16 @@
     const dur = (sec) => sec >= 60 ? t("durMin", { n: Math.round(sec / 6) / 10 }) : t("durSec", { n: sec });
     const vars = Object.fromEntries(Object.entries(step.timings || {}).map(([k, v]) => [k, dur(v)]));
     const fill = (x) => x.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
-    const kids = [h("h1", {}, I.title), h("ol", { class: "howto" }, I.items.map(x => h("li", {}, fill(x))))];
+    const kids = [h("h1", {}, I.title)];
+    if (step.variant === "s1" && current && current.lang_locked === false) {
+      // last chance to switch language: nothing has been shown in the chosen language yet
+      const langs = window.__langs || ["en", "ru", "ko", "zh", "mn"];
+      kids.push(h("div", { class: "card langpick" }, h("p", { class: "label" }, t("langHint")),
+        h("div", { class: "langs" }, langs.map(l => h("button", {
+          type: "button", class: "chip" + (l === lang ? " on" : ""), onclick: () => changeLang(l),
+        }, I18N[l].langName)))));
+    }
+    kids.push(h("ol", { class: "howto" }, I.items.map(x => h("li", {}, fill(x)))));
     if (I.sandbox) {
       const { el } = textBlock({ sentences: I.sandbox.map(x => ({ s: x, p: 0 })) }, true, []);
       kids.push(h("div", { class: "card try" }, h("p", { class: "label" }, I.tryTitle), el));

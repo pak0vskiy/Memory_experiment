@@ -109,29 +109,32 @@
     const warn = contentProblems.length ? h("div", { class: "card", style: "border-color: var(--bad)" },
       h("strong", {}, "content.json warnings"), h("ul", {}, contentProblems.map(x => h("li", {}, x)))) : null;
 
-    const head = ["Nickname", "Lang", "Grp", "Status", "Opens / due", "Gap 1→2 (h)", "Gap 2→3 (h)", "Session min (1/2/3)", "Routine", "Highlight", "Pred R", "Pred H", "Belief", "Tab switches", ""];
+    const head = ["Nickname", "Actions", "Lang", "Grp", "Status", "Opens / due", "Gap 1→2 (h)", "Gap 2→3 (h)", "Session min (1/2/3)", "Routine", "Highlight", "Pred R", "Pred H", "Belief", "Tab switches"];
     const table = h("table", {}, h("thead", {}, h("tr", {}, head.map(x => h("th", {}, x)))),
       h("tbody", {}, ps.map(p => {
         const isDue = dueNow.includes(p);
+        // actions right after the nickname, so they're visible without scrolling the table sideways
+        const actions = h("td", { class: "actions-cell" },
+          h("button", { class: "btn small" + (p.tester ? " on" : ""), title: "Short timers and no waiting between sessions, for piloting", onclick: async () => {
+            if (!p.tester && !confirm(`Test mode for ${p.nickname}?\n\nTimers become ${ov.config.TEST_MODE_SEC} s and the next session opens ${ov.config.TEST_MODE_GAP_SEC} s after finishing one. ${p.nickname} is excluded from the analysis.\n\nOnly use this for your own test accounts.`)) return;
+            await api("/api/admin/tester", { id: p.id, tester: !p.tester }); load(); } },
+            p.tester ? "Test mode: on" : "Test mode"),
+          " ",
+          h("button", { class: "btn small", onclick: async () => {
+            if (!p.excluded && !confirm(`Exclude ${p.nickname} from the analysis? (Data is kept; you can include them again.)`)) return;
+            await api("/api/admin/exclude", { id: p.id, excluded: !p.excluded }); load(); } },
+            p.excluded ? "Include" : "Exclude"));
         return h("tr", { class: (isDue ? "due " : "") + (p.excluded ? "excluded" : "") },
-          h("td", {}, p.nickname, p.tester ? h("span", { class: "badge" }, "TEST") : null), h("td", {}, p.lang), h("td", {}, p.group), h("td", {}, p.status),
+          h("td", {}, p.nickname, p.tester ? h("span", { class: "badge" }, "TEST") : null), actions,
+          h("td", {}, p.lang), h("td", {}, p.group), h("td", {}, p.status),
           h("td", { title: when(p.due_at) }, p.due_at ? `${when(p.due_at)} (${rel(p.due_at, now)})` : ""),
           h("td", { class: "num" }, p.gap_day0_day2_h ?? ""), h("td", { class: "num" }, p.gap_day2_day9_h ?? ""),
-          h("td", { class: "num", title: "Minutes from opening a session to finishing it. Much longer than ~15/15/5 means it was interrupted." },
+          h("td", { class: "num", title: "Minutes from opening a session to finishing it. Much longer than ~12/15/8 means it was interrupted." },
             [p.s1_min, p.s2_min, p.s3_min].map(x => x ?? "–").join(" / ")),
           h("td", { class: "num" }, p.routine_n ? `${p.routine_correct}/${p.routine_n}` : ""),
           h("td", { class: "num" }, p.usual_n ? `${p.usual_correct}/${p.usual_n}` : ""),
           h("td", { class: "num" }, p.pred_routine ?? ""), h("td", { class: "num" }, p.pred_usual ?? ""),
-          h("td", {}, p.belief ?? ""), h("td", { class: "num" }, p.tab_switches || ""),
-          h("td", {}, h("button", { class: "btn small", onclick: async () => {
-            if (!p.excluded && !confirm(`Exclude ${p.nickname} from the analysis? (Data is kept; you can include them again.)`)) return;
-            await api("/api/admin/exclude", { id: p.id, excluded: !p.excluded }); load(); } },
-            p.excluded ? "Include" : "Exclude"),
-            " ",
-            h("button", { class: "btn small" + (p.tester ? " on" : ""), title: "Short timers and no waiting between sessions, for piloting", onclick: async () => {
-              if (!p.tester && !confirm(`Test mode for ${p.nickname}?\n\nTimers become ${ov.config.TEST_MODE_SEC} s and the next session opens ${ov.config.TEST_MODE_GAP_SEC} s after finishing one. ${p.nickname} is excluded from the analysis.\n\nOnly use this for your own test accounts.`)) return;
-              await api("/api/admin/tester", { id: p.id, tester: !p.tester }); load(); } },
-              p.tester ? "Test mode: on" : "Test mode")));
+          h("td", {}, p.belief ?? ""), h("td", { class: "num" }, p.tab_switches || ""));
       })));
 
     $main.replaceChildren(

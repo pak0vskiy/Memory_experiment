@@ -249,9 +249,9 @@ Requirements on the server: Docker with the compose plugin, Tailscale logged in 
 
 ```bash
 ssh root@<server>
-git clone -b claude/platform-vps-deployment-fszjdw https://github.com/pak0vskiy/higgsfield_ai_challenge.git /opt/memory-study
+git clone https://github.com/pak0vskiy/Memory_experiment.git /opt/memory-study
 # private repo: use a GitHub token as password, or copy it from your laptop instead:
-#   scp -r ./higgsfield_ai_challenge root@<server>:/opt/memory-study
+#   scp -r ./Memory_experiment root@<server>:/opt/memory-study
 ```
 
 **2. Run the setup script**

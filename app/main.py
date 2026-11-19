@@ -68,7 +68,7 @@ def timing(p):
 TOLERANCE = 3  # seconds of clock slack when checking that a timed phase really finished
 
 TEXT_IDS = ("T1", "T2")
-LANGS = ("en", "ru", "ko", "zh")
+LANGS = ("en", "ru", "ko", "zh", "mn")
 
 # Brute-force guard for 4-digit PINs: after LOGIN_MAX_FAILS wrong PINs for one nickname,
 # that nickname is locked for LOGIN_LOCK_SEC. Kept in memory; a restart clears it.
@@ -1198,6 +1198,7 @@ REMINDER_TEXT = {
     "ru": ("Исследование памяти – сессия {n}", "Следующая сессия исследования памяти открыта. Войдите с никнеймом и PIN: {url}"),
     "ko": ("기억 연구 – 세션 {n}", "다음 기억 연구 세션이 열렸습니다. 닉네임과 PIN으로 로그인하세요: {url}"),
     "zh": ("记忆研究 – 第 {n} 次", "下一次记忆研究已开放。请用昵称和PIN码登录：{url}"),
+    "mn": ("Санах ойн судалгаа – {n}-р сесс", "Санах ойн судалгааны дараагийн сесс нээгдлээ. Хоч нэр, PIN кодоороо нэвтэрнэ үү: {url}"),
 }
 
 

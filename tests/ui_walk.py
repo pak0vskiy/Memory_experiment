@@ -18,7 +18,7 @@ OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "shots")
 LANG = sys.argv[2] if len(sys.argv) > 2 else "en"
 NICK = sys.argv[3] if len(sys.argv) > 3 else "tester1"
 OUT.mkdir(parents=True, exist_ok=True)
-LANG_LABEL = {"en": "English", "ru": "Русский", "ko": "한국어", "zh": "中文"}[LANG]
+LANG_LABEL = {"en": "English", "ru": "Русский", "ko": "한국어", "zh": "中文", "mn": "Монгол"}[LANG]
 VIEWPORT = os.environ.get("VIEWPORT", "ipad")
 SIZE = {"ipad": {"width": 820, "height": 1180}, "phone": {"width": 390, "height": 844}}[VIEWPORT]
 

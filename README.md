@@ -2,7 +2,7 @@
 
 A small web app for running a 3-session memory experiment with real participants. It was built for a university team presentation, *"Remembering as Learning: Why Does Trying to Remember Strengthen Memory More Than Reviewing Notes?"*, in the Introduction to Neuroscience / Science of Learning course (Prof. Sungshin Kim, Hanyang University).
 
-Participants use it on iPad, phone or laptop, in **English, Russian, Korean or Simplified Chinese**. The researcher uses an admin page to track people, re-mark answers and export CSV data.
+Participants use it on iPad, phone or laptop, in **English, Russian, Korean, Simplified Chinese or Mongolian (Cyrillic)**. The researcher uses an admin page to track people, re-mark answers and export CSV data.
 
 ---
 
@@ -92,7 +92,7 @@ memory-study/
 │   └── static/
 │       ├── index.html     # participant page shell
 │       ├── app.js         # participant single-page app (vanilla JS, no build step)
-│       ├── i18n.js        # all participant UI strings in en / ru / ko / zh
+│       ├── i18n.js        # all participant UI strings in en / ru / ko / zh / mn
 │       ├── style.css      # shared styles (iPad-first, light + dark mode)
 │       ├── admin.html     # admin page shell
 │       └── admin.js       # admin dashboard: table, paired-score chart, answer grading, exports
@@ -191,10 +191,10 @@ Pages: `/` (participants), `/admin` (researcher), `/healthz`.
 
 - `fact` links a final question to the practice question about the same fact (used for the hypercorrection analysis). Final questions should be **reworded**, not copied from practice.
 - `source` (optional) links a question to the sentence that contains the answer: `{"en": "a few words from that sentence", ...}` (or a list of snippets). Without it the sentence is found through the `accept` keywords. The admin page warns when a final question matches no sentence or several, so the "was this fact highlighted?" columns are reliable.
-- `accept` = keywords. Use stems for Russian (`ротоног` matches ротоногие/ротоногих). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. A keyword starting with `=` must equal the whole answer: Korean `=암` accepts 암 (cancer) but not 암컷 (female), `=산` accepts 산 (acid) but not 이산화탄소. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
+- `accept` = keywords. Use stems for Russian (`ротоног` matches ротоногие/ротоногих). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. A keyword starting with `=` must equal the whole answer: Korean `=암` accepts 암 (cancer) but not 암컷 (female), `=산` accepts 산 (acid) but not 이산화탄소. For Mongolian, use stems that survive suffixes (хүчил → хүчлээс, хавдар → хавдраар): acid is `хүчл` + `=хүчил`, so хүчилтөрөгч (oxygen) is *not* accepted. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
 - A language is offered at sign-up only if **both** texts have a body in it.
 - **Current content (the real texts):** T1 *Mantis shrimp* and T2 *The naked mole-rat*, written as a matched pair: ~238 English words each, the same kinds of facts (a group/region, a habitat or body part, a named scientist, numbers, a technical term, a nickname/substance), 10 facts per text. Each fact has a self-test question (Sessions 1–2) and a reworded final question (Session 3).
-- **Comparable across languages:** en/ru/ko/zh have the same paragraphs and the same number of sentences (T1: 2/5/3/5/1, T2: 3/5/4/3), each fact is in the same sentence in every language, tested numbers are digits everywhere, and no language gets extra hints. Within each language the two texts differ in length by ≤5%. `test_real_content_is_comparable_across_languages` checks this. Have a native speaker read each translation before the study.
+- **Comparable across languages:** en/ru/ko/zh/mn have the same paragraphs and the same number of sentences (T1: 2/5/3/5/1, T2: 3/5/4/3), each fact is in the same sentence in every language, tested numbers are digits everywhere, and no language gets extra hints. Within each language the two texts differ in length by ≤5%. `test_real_content_is_comparable_across_languages` checks this. Have a native speaker read each translation before the study.
 - Facts to double-check against the sources: Patek, Korff & Caldwell 2004 (*Nature*; 23 m/s, saddle spring), Thoen et al. 2014 (*Science*; 12 colour receptors, poor colour discrimination), Jarvis 1981 (*Science*; eusociality), Park et al. 2017 (*Science*; 18 min without oxygen, fructose). Colony size "about 80" is a typical average.
 
 ### Configuration (environment variables)
@@ -354,8 +354,8 @@ print(it.groupby("condition")["final_confidence"].mean())
 
 ## 6. Open items / ideas
 
-- [x] Real texts in en / ru / ko / zh (mantis shrimp, naked mole-rat), matched across languages.
-- [ ] Native speakers check the Russian, Korean and Chinese versions; verify the facts against the sources listed under *Content format*.
+- [x] Real texts in en / ru / ko / zh / mn (mantis shrimp, naked mole-rat), matched across languages.
+- [ ] Native speakers check the Russian, Korean, Chinese and Mongolian versions; verify the facts against the sources listed under *Content format*.
 - [ ] Run `deploy/setup-vps.sh` on the VPS, check Funnel, then pilot with 1–2 people on real devices.
 - [ ] Test on a real iPad and a phone (Safari): sentence tapping, keyboard, sliders, dark mode, calendar button.
 - [ ] Optional: drag-to-highlight across several sentences (currently tap per sentence, to avoid scroll conflicts on touch).

@@ -12,7 +12,7 @@
 
   function guessLang() {
     const n = (navigator.language || "en").slice(0, 2);
-    return ["en", "ru", "ko", "zh"].includes(n) ? n : "en";
+    return ["en", "ru", "ko", "zh", "mn"].includes(n) ? n : "en";
   }
 
   function t(key, vars = {}) {
@@ -111,7 +111,7 @@
   async function boot() {
     setLang(lang);
     $app.replaceChildren(h("p", { class: "muted" }, t("loading")));
-    let meta = { langs: ["en", "ru", "ko", "zh"] };
+    let meta = { langs: ["en", "ru", "ko", "zh", "mn"] };
     try { meta = await api("/api/meta"); } catch (e) { /* keep defaults */ }
     window.__langs = meta.langs;
     if (token) return refresh();
@@ -234,7 +234,7 @@
   // ------------------------------------------------------------ join / login
   function renderJoin(mode) {
     stopTimer();
-    const langs = window.__langs || ["en", "ru", "ko", "zh"];
+    const langs = window.__langs || ["en", "ru", "ko", "zh", "mn"];
     const langSel = h("div", { class: "langs", role: "group", "aria-label": t("language") },
       langs.map(l => h("button", {
         class: "chip" + (l === lang ? " on" : ""), type: "button",
@@ -659,7 +659,7 @@
   // ------------------------------------------------------------ between sessions / results
   function renderWait(st) {
     const unlockMs = (st.unlock_at - clockOffset) * 1000;
-    const when = new Date(unlockMs).toLocaleString({ ko: "ko-KR", ru: "ru-RU", zh: "zh-CN" }[lang] || "en-GB",
+    const when = new Date(unlockMs).toLocaleString({ ko: "ko-KR", ru: "ru-RU", zh: "zh-CN", mn: "mn-MN" }[lang] || "en-GB",
       { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
     const left = h("p", { class: "muted center" });
     const reopen = h("button", { class: "btn primary hidden", onclick: refresh }, t("continue"));

@@ -214,6 +214,15 @@
     document.body.append(bar);
   }
 
+  // Accidental reload / closing the tab during a test or highlighting: ask first (laptops; mobile
+  // browsers mostly ignore this). Nothing is lost anyway: drafts are kept and the timer continues.
+  window.addEventListener("beforeunload", (e) => {
+    if (token && current && current.step && ["test", "final", "highlight", "survey"].includes(current.step.type)) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
   // Log when the participant leaves the page during a session (tab/app switch) and comes back,
   // so the time spent away can be computed per step.
   document.addEventListener("visibilitychange", () => {
@@ -540,7 +549,8 @@
       h("p", {}, h("span", { class: "label" }, t("yourAnswer") + ": "), it.yours || t("noAnswer"),
         it.confidence ? h("span", { class: "muted" }, ` · ${t("yourConf")}: ${t("conf")[it.confidence - 1]}`) : null),
       h("p", { class: "key" }, h("span", { class: "label" }, t("correctAnswer") + ": "), h("strong", {}, it.answer))));
-    $app.replaceChildren(...header(t("fbTitle", { title: step.title }), t("fbHint")), ...cards,
+    $app.replaceChildren(...header(t("fbTitle", { title: step.title }), t("fbHint")),
+      ...(step.auto_submitted ? [msg(t("timeUp"), "info")] : []), ...cards,
       h("div", { class: "actions" }, timedContinue(step)));
   }
 

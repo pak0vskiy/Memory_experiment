@@ -50,7 +50,9 @@ FEEDBACK_MIN_SEC = env_int("FEEDBACK_MIN_SEC", 60)
 DAY2_GAP = env_int("DAY2_GAP_SEC", 48 * 3600)
 DAY9_GAP = env_int("DAY9_GAP_SEC", 7 * 24 * 3600)
 # Test mode (switched on per participant from the admin page, for piloting on the live server):
-# every timed step lasts TEST_MODE_SEC and the next session opens TEST_MODE_GAP_SEC after the last.
+# reading/highlighting/feedback waits last TEST_MODE_SEC and the next session opens TEST_MODE_GAP_SEC
+# after the last. The self-test keeps its real limit: it can be submitted early anyway, and a
+# too-short limit would auto-submit before the tester has answered.
 TEST_MODE_SEC = env_int("TEST_MODE_SEC", 30)
 TEST_MODE_GAP_SEC = env_int("TEST_MODE_GAP_SEC", 30)
 
@@ -59,7 +61,7 @@ def timing(p):
     """Durations for this participant: the real ones, or short ones in test mode."""
     if p is not None and "tester" in p.keys() and p["tester"]:
         t = TEST_MODE_SEC
-        return {"read": t, "highlight": t, "test": max(10, t * 3 // 4), "block": t, "feedback_min": 5,
+        return {"read": t, "highlight": t, "test": TEST_MAX_SEC, "block": t, "feedback_min": 5,
                 "gap2": TEST_MODE_GAP_SEC, "gap9": TEST_MODE_GAP_SEC}
     return {"read": READ_SEC, "highlight": HIGHLIGHT_SEC, "test": TEST_MAX_SEC, "block": BLOCK_SEC,
             "feedback_min": FEEDBACK_MIN_SEC, "gap2": DAY2_GAP, "gap9": DAY9_GAP}
@@ -586,6 +588,9 @@ def step_payload(con, p, step, now):
             (p["id"], p["stage"]),
         ).fetchall()
         mine = {r["qid"]: r for r in rows}
+        last_test = con.execute("SELECT extra FROM steps WHERE pid=? AND stage=? AND type='test' ORDER BY id DESC LIMIT 1",
+                                (p["id"], p["stage"])).fetchone()
+        payload["auto_submitted"] = bool(last_test and last_test["extra"] and json.loads(last_test["extra"]).get("auto_submit"))
         payload["items"] = [
             {
                 "q": tr(q["q"], lang),

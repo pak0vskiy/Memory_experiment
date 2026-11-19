@@ -21,7 +21,7 @@
   }
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }   /* no pull-to-refresh where supported */
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 18px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
@@ -166,3 +166,5 @@ ol.howto li { margin: 0 0 12px; padding-left: 4px; }
 .card.try .text { padding: 16px 18px; font-size: 18px; }
 /* while dragging with Pencil/mouse */
 .text.dragging, .text.dragging * { cursor: crosshair; }
+
+.msg.info { background: color-mix(in srgb, var(--hl) 45%, var(--card)); color: var(--ink); margin: 0 0 16px; }

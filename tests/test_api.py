@@ -547,6 +547,8 @@ def test_test_mode_shortens_timers_and_gaps(env):
     clock.advance(main.TEST_MODE_GAP_SEC)
     st = state(client, tok, skip_intro=False)
     assert st["stage"] == "day2" and st["step"]["timings"]["highlight"] == main.TEST_MODE_SEC
+    # the self-test keeps its real limit in test mode (it can be submitted early anyway)
+    assert st["step"]["timings"]["test"] == main.TEST_MAX_SEC
     complete(client, tok, "intro")
     st = state(client, tok)
     assert st["step"]["id"] == "hl1" and st["step"]["remaining"] == main.TEST_MODE_SEC
@@ -628,3 +630,17 @@ def test_every_question_has_answer_words_in_every_language():
 def test_tokenize():
     assert main.tokenize("In 2004, the biologist", "en") == ["In", "2004,", "the", "biologist"]
     assert main.tokenize("2004年，希拉·帕特克用Apple", "zh") == ["2004", "年", "，", "希", "拉", "·", "帕", "特", "克", "用", "Apple"]
+
+
+
+def test_feedback_says_when_the_self_test_ran_out_of_time(env):
+    client, clock = env
+    for nick, auto in (("slow", True), ("quick", False)):
+        tok = join(client, nick=nick).json()["token"]
+        state(client, tok)
+        for sid in ("read1", "read2"):
+            clock.advance(240); complete(client, tok, sid)
+        text = state(client, tok)["step"]["text"]
+        clock.advance(180 if auto else 60)
+        complete(client, tok, "test", {**practice_answers(text), "auto": auto})
+        assert state(client, tok)["step"]["auto_submitted"] is auto

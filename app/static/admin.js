@@ -3,6 +3,8 @@
   const $updated = document.getElementById("updated");
   let key = localStorage.getItem("ms_admin_key") || "";
   let contentProblems = [];
+  let insightsData = null;
+  let gradeKind = "final";
 
   function h(tag, attrs = {}, ...kids) {
     const el = document.createElement(tag);
@@ -66,10 +68,11 @@
 
   async function load() {
     if (!key) return askKey();
-    let ov, ans, chk;
-    try { [ov, ans, chk] = await Promise.all([api("/api/admin/overview"), api("/api/admin/answers"), api("/api/admin/content-check")]); }
+    let ov, ans, chk, ins;
+    try { [ov, ans, chk, ins] = await Promise.all([api("/api/admin/overview"), api("/api/admin/answers"), api("/api/admin/content-check"), api("/api/admin/insights")]); }
     catch (e) { return askKey(e.message === "bad key" ? "Wrong admin key." : e.message); }
     contentProblems = chk.problems;
+    insightsData = ins;
     render(ov, ans.answers);
   }
 
@@ -91,7 +94,7 @@
         .map(([label, val]) => h("div", { class: "stat" }, h("b", {}, val), h("span", {}, label))));
 
     const exports = h("div", { class: "row" }, "Export CSV:",
-      ["participants", "answers", "highlights", "events"].map(w => h("a", { href: "#", onclick: (e) => { e.preventDefault(); download(`/api/admin/export/${w}.csv`, `${w}.csv`); } }, `${w}.csv`)),
+      ["items", "participants", "answers", "highlights", "highlight_log", "steps", "survey", "predictions", "events"].map(w => h("a", { href: "#", onclick: (e) => { e.preventDefault(); download(`/api/admin/export/${w}.csv`, `${w}.csv`); } }, `${w}.csv`)),
       h("button", { class: "btn small", onclick: () => download("/api/admin/backup.db", "study.db") }, "Download database backup"),
       h("button", { class: "btn small", onclick: load }, "Refresh"),
       h("button", { class: "btn small", onclick: async () => {
@@ -134,9 +137,14 @@
       h("h2", { style: "margin-top:28px" }, "Final scores per person"),
       h("p", { class: "legend" }, "Each line is one finished participant: left dot = highlight + reread, right dot = self-test routine (% correct)."),
       h("div", { class: "card chartcard" }, pairedChart(finished)),
-      h("h2", { style: "margin-top:28px" }, "Check final answers"),
-      h("p", { class: "legend" }, "Answers marked wrong by keyword matching are listed first. Click ✓ or ✗ to override, 'auto' to undo."),
-      gradeTable(answers),
+      h("h2", { style: "margin-top:28px" }, "Insights (finished, not excluded)"),
+      h("p", { class: "legend" }, "Live summary for the presentation. Full detail per person × question is in items.csv."),
+      insightsView(insightsData),
+      h("h2", { style: "margin-top:28px" }, "Check answers"),
+      h("p", { class: "legend" }, "Answers marked wrong by keyword matching are listed first. Click ✓ or ✗ to override, 'auto' to undo. Practice marks matter for the confident-error analysis."),
+      h("div", { class: "row" }, ["final", "practice"].map(k => h("button", { class: "btn small" + (gradeKind === k ? " on" : ""),
+        onclick: () => { gradeKind = k; render(ov, answers); } }, k === "final" ? "Final test" : "Practice (self-tests)"))),
+      gradeTable(answers.filter(a => a.kind === gradeKind)),
       h("p", { class: "legend" }, `Timings (s): reading ${ov.config.READ_SEC}, highlight round ${ov.config.HIGHLIGHT_SEC}, self-test max ${ov.config.TEST_MAX_SEC}, test+feedback block ${ov.config.BLOCK_SEC}; gaps: Day 2 after ${ov.config.DAY2_GAP_SEC}s, Day 9 after ${ov.config.DAY9_GAP_SEC}s.`),
     );
     $updated.textContent = "updated " + new Date().toLocaleTimeString("en-GB");
@@ -171,13 +179,51 @@
     return svg;
   }
 
+  // Small tables for the headline analyses.
+  function insightsView(d) {
+    if (!d || !d.participants) return h("p", { class: "muted" }, "No finished participants yet.");
+    const P = (x) => x === null || x === undefined ? "–" : `${Math.round(100 * x)}%`;
+    const tbl = (title, note, head, rows) => h("div", { class: "card" }, h("strong", {}, title),
+      note ? h("p", { class: "legend" }, note) : null,
+      h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, head.map(x => h("th", {}, x)))),
+        h("tbody", {}, rows.map(r => h("tr", {}, r.map((c, i) => h("td", { class: i ? "num" : "" }, c))))))));
+    const name = { test: "Self-test routine", highlight: "Highlight + reread" };
+    const pva = d.prediction_vs_actual;
+    const cal = d.calibration;
+    const bel = d.beliefs || {};
+    const opts = ["highlight", "test", "same"];
+    return h("div", { class: "insights" },
+      h("p", { class: "legend" }, `${d.participants} participants, ${d.items} final answers.`),
+      tbl("1. Final test by method (H1)", "Accuracy and mean confidence (1–5) on the final test.",
+        ["Method", "Answers", "Correct", "Mean confidence"],
+        ["test", "highlight"].map(c => [name[c], d.by_condition[c].n, P(d.by_condition[c].accuracy), d.by_condition[c].mean_confidence ?? "–"])),
+      tbl("2. Prediction vs. reality (H2)", "What people predicted at the end of Session 2 vs. what they scored a week later.",
+        ["Method", "Predicted", "Actual"],
+        ["test", "highlight"].map(c => [name[c], pva[c].predicted_pct === null ? "–" : `${Math.round(pva[c].predicted_pct)}%`,
+                                        pva[c].actual_pct === null ? "–" : `${Math.round(pva[c].actual_pct)}%`])),
+      tbl("3. Beliefs: which method works better?", "Asked at the end of Session 2, and again after the final test (before results).",
+        ["Answer", "Before final test", "After final test"],
+        opts.map(o => [{ highlight: "Highlighting", test: "Self-testing", same: "Same" }[o], (bel.before_test || {})[o] || 0, (bel.after_test || {})[o] || 0])),
+      tbl("4. Did highlighting a fact help? (highlight text only)", "Final accuracy for facts whose sentence was highlighted in round 2 vs. not.",
+        ["Fact was…", "Answers", "Correct"],
+        [["highlighted", d.highlighting.highlighted.n, P(d.highlighting.highlighted.accuracy)],
+         ["not highlighted", d.highlighting.not_highlighted.n, P(d.highlighting.not_highlighted.accuracy)]]),
+      tbl("5. Confident errors (routine text, Session 1 self-test)", "Hypercorrection: errors made with confidence 4–5, then corrected by feedback, should be remembered well.",
+        ["Session 1 answer", "Facts", "Correct a week later"],
+        ["correct", "high-conf error", "low-conf error"].map(k => [k, d.s1_errors[k].n, P(d.s1_errors[k].accuracy)])),
+      tbl("6. Calibration on the final test", "Accuracy at each confidence level. Well calibrated = accuracy rises with confidence.",
+        ["Confidence", "Routine: n", "Routine: correct", "Highlight: n", "Highlight: correct"],
+        ["1", "2", "3", "4", "5"].map(lv => [lv, cal.test[lv].n, P(cal.test[lv].accuracy), cal.highlight[lv].n, P(cal.highlight[lv].accuracy)])),
+    );
+  }
+
   function gradeTable(answers) {
     const sorted = [...answers].sort((a, b) => (a.effective - b.effective) || a.text_id.localeCompare(b.text_id) || a.qid.localeCompare(b.qid));
-    if (!sorted.length) return h("p", { class: "muted" }, "No final answers yet.");
+    if (!sorted.length) return h("p", { class: "muted" }, "No answers yet.");
     return h("div", { class: "tablewrap" }, h("table", { class: "grade" },
       h("thead", {}, h("tr", {}, ["Who", "Text", "Question", "Key", "Answer", "Auto", "Your call"].map(x => h("th", {}, x)))),
       h("tbody", {}, sorted.map(a => h("tr", {},
-        h("td", {}, `${a.nickname} (${a.lang})`), h("td", {}, `${a.text_id} · ${a.condition === "test" ? "routine" : "highlight"}`),
+        h("td", {}, `${a.nickname} (${a.lang})`), h("td", {}, `${a.text_id} · ${a.condition === "test" ? "routine" : "highlight"}${a.kind === "practice" ? ` · S${a.stage === "day0" ? 1 : 2}` : ""}`),
         h("td", {}, a.question), h("td", {}, a.key), h("td", {}, a.answer || "—"),
         h("td", {}, a.auto_correct ? "✓" : "✗"),
         h("td", {}, [[1, "✓"], [0, "✗"], [null, "auto"]].map(([v, label]) => h("button", {

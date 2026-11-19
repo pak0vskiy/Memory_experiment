@@ -112,10 +112,19 @@ with sync_playwright() as p:
         inputs = page.locator(".answer")
         for i in range(inputs.count()):
             inputs.nth(i).fill(["8", "tun", "2007", "half a mm"][i] if LANG == "en" else "?")
+            page.locator(".confs").nth(i).locator(".conf").nth(i % 5).click()
         page.locator(".actions .btn.primary").click()
         page.wait_for_timeout(800)
+    # end-of-study questionnaire: submitting with nothing chosen must be refused
+    page.wait_for_selector("[data-item]")
+    page.locator(".actions .btn.primary").click()
+    page.wait_for_selector(".msg.error")
+    for item in page.locator("[data-item]").all():
+        item.locator(".chip").first.click()
+    shot(page, "10_survey")
+    page.locator(".actions .btn.primary").click()
     page.wait_for_selector(".result")
-    shot(page, "10_results")
+    shot(page, "11_results")
     print("errors:", errors)
     browser.close()
     sys.exit(1 if errors else 0)

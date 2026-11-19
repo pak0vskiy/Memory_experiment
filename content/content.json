@@ -1,5 +1,5 @@
 {
- "_readme": "SAMPLE CONTENT for testing. Replace with your own texts. Each text: title, body (paragraphs separated by a blank line, i.e. \\n\\n), practice questions (self-test on Day 0 and Day 2) and final questions (Day 9). 'accept' = keywords; an answer counts as correct if it contains any keyword after lowercasing and removing spaces/punctuation. Use word stems for Russian (e.g. 'бочон' matches бочонок/бочонка). 'fact' links a final question to the practice question about the same fact. A language missing from either text is hidden at sign-up.",
+ "_readme": "SAMPLE CONTENT for testing. Replace with your own texts. Each text: title, body (paragraphs separated by a blank line, i.e. \\n\\n), practice questions (self-test on Day 0 and Day 2) and final questions (Day 9). 'accept' = keywords; an answer counts as correct if it contains any keyword after lowercasing and removing spaces/punctuation. Use word stems for Russian (e.g. 'бочон' matches бочонок/бочонка). 'fact' links a final question to the practice question about the same fact. A language missing from either text is hidden at sign-up. Optional 'source' on a question: {lang: 'a few words from the sentence that contains the answer'} (or a list of snippets). It links the fact to its sentence so you can tell whether it was highlighted; without it the sentence is found via the accept keywords. The admin page warns when that is ambiguous.",
  "texts": {
   "T1": {
    "title": {
@@ -266,6 +266,11 @@
       "ko": [
        "꼬리"
       ]
+     },
+     "source": {
+      "en": "performs a waggle dance",
+      "ru": "исполняет виляющий танец",
+      "ko": "벌집으로 돌아와"
      }
     },
     {
@@ -373,6 +378,11 @@
       "ko": [
        "꼬리"
       ]
+     },
+     "source": {
+      "en": "performs a waggle dance",
+      "ru": "исполняет виляющий танец",
+      "ko": "벌집으로 돌아와"
      }
     },
     {

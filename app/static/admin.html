@@ -28,6 +28,12 @@
   .legend { color: var(--muted); font-size: 14px; }
   .chartcard svg { max-width: 560px; display: block; margin: 0 auto; }
   .grade td:last-child { white-space: nowrap; }
+  .insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+  .insights > p { grid-column: 1 / -1; margin: 0; }
+  .insights .card { margin: 0; }
+  .insights th, .insights td { white-space: normal; padding: 6px 8px; }
+  @media (min-width: 1000px) { .insights .card:last-child { grid-column: span 2; } }
+  .row .btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 </style>
 </head>
 <body>

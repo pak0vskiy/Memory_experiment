@@ -42,7 +42,7 @@ Participants use it on iPad, phone or laptop, in **Russian, English or Korean**.
 |---|---|---|---|
 | 1 (`day0`) | At sign-up | `read1` read T1 (240 s) → `read2` read T2 (240 s) → `test` self-test on the routine text (max 180 s) → `feedback` correct answers (rest of a 240 s block, min 60 s) | ~15 min |
 | 2 (`day2`) | 48 h after Session 1 ends | `hl1` highlight + reread the usual text (240 s) → `hl2` reread highlights, can edit (240 s) → `test` self-test (routine text) → `feedback` → `predict` predicted final score per text + "which method works better?" | ~15 min |
-| 3 (`day9`) | 7 days after Session 2 ends | `final1` final test on T1 → `final2` final test on T2 → results page with own scores + debrief | ~5 min |
+| 3 (`day9`) | 7 days after Session 2 ends | `final1` final test on T1 → `final2` final test on T2 (answer + confidence 1–5 per question) → `survey` short questionnaire → results page with own scores + debrief | ~7–10 min |
 
 Rules the app enforces:
 - Timers on reading, highlighting and feedback steps can't be skipped. The server rejects early "continue".
@@ -53,6 +53,22 @@ Rules the app enforces:
 - Typed answers, confidence ratings and highlights are saved on the device as the participant works, so a reload or a Safari tab discard doesn't lose them. If saving a step fails (bad connection), the app retries and then shows a "Try again" banner. Nothing is lost.
 - The prediction sliders must be moved before continuing. An untouched slider is not recorded as a prediction of 0.
 - The waiting screen has an "Add a reminder to my calendar" button (`.ics`, opens straight into Calendar on iPhone/iPad).
+
+### What is collected (and what it's for)
+
+| Question | Data | Where |
+|---|---|---|
+| H1: does the routine beat highlighting? | Final answers per text/condition, auto-marked + your overrides | `items.csv`, `answers.csv` |
+| H2: do people believe highlighting works better? | Predicted score per text (end of Session 2); "which method works better?" asked at the end of Session 2 **and again after the final test**; "which felt harder?" | `items.csv` (`predicted_for_text`), `participants.csv` (`belief`, `survey_belief_after`, `survey_harder`), `predictions.csv` |
+| Does highlighting a fact help remember it? | Which sentences were highlighted (each round, plus every tap with time), and which sentence holds each fact → per final question `highlighted_r1` / `highlighted_r2` | `items.csv`, `highlights.csv`, `highlight_log.csv` |
+| Confident errors (hypercorrection) | Session 1 and 2 self-test answers with confidence, linked to the same fact in the final test → `s1_error_type` = correct / high-conf error / low-conf error | `items.csv` |
+| Confidence vs. accuracy (calibration, feeling of knowing) | Confidence 1–5 on every final answer, for **both** methods | `items.csv` (`final_confidence`), `participants.csv` (`final_conf_routine`, `final_conf_usual`) |
+| Data quality / exclusions | Time away from the page per step, tab switches, scroll depth on reading, auto-submitted self-tests, minutes per session, gaps between sessions, "did you review the texts / take notes?", device | `steps.csv`, `participants.csv`, `survey.csv`, `events.csv` |
+| Covariates | Prior knowledge of each topic (1–5), usual study habit, language, group, which text was read first, answer timing (first keystroke, last edit, number of edits) | `items.csv`, `participants.csv` |
+
+**Questionnaire items** (Session 3, after the final test, before results): `belief_after` (highlight/test/same), `harder` (highlight/test/same), `prior_T1`, `prior_T2` (1–5), `reviewed` (no/little/yes), `notes` (no/yes), `habit` (reread/highlight/selftest/notes/other). Defined in `SURVEY` in `app/main.py`, labels in `i18n.js`.
+
+**`items.csv`** is the file to analyse: one row per participant × final question, with the final answer, correctness, confidence and timing; the Session 1/2 self-test answer, correctness and confidence for the same fact; whether the fact's sentence was highlighted; the prediction for that text; prior knowledge; and the belief. The admin page's **Insights** section shows the headline numbers live: accuracy and confidence per method, prediction vs. reality, beliefs before/after, highlighted vs. non-highlighted facts, confident errors, and calibration.
 
 ---
 
@@ -106,10 +122,13 @@ memory-study/
 | Table | Contents |
 |---|---|
 | `participants` | nickname (unique, case-insensitive), PIN hash, token, lang, group (`A`/`B`), `day0_done` / `day2_done` / `day9_done` timestamps, current `stage` / `step` / `step_started`, `test_used` (seconds used in last self-test), `belief`, `excluded` |
-| `answers` | One row per answer: `stage`, `kind` (`practice`/`final`), `text_id`, `condition` (`test`/`highlight`), `qid`, `fact`, `answer`, `confidence` (1–5, practice only), `auto_correct`, `override` (admin mark or NULL), `rt_ms`, `ts` |
-| `highlights` | Per highlight round: `round` (1/2), `text_id`, `sentences` (JSON list of sentence indices) |
+| `answers` | One row per answer: `stage`, `kind` (`practice`/`final`), `text_id`, `condition` (`test`/`highlight`), `qid`, `fact`, `answer`, `confidence` (1–5, practice **and final**), `auto_correct`, `override` (admin mark or NULL), `rt_ms` (last edit), `first_ms` (first keystroke), `edits` (keystrokes), `ts` |
+| `highlights` | Per highlight round: `round` (1/2), `text_id`, `sentences` (JSON list of sentence indices at the end of the round) |
+| `highlight_log` | Every highlight tap: `round`, `text_id`, `sentence`, `action` (`on`/`off`), `t_ms` since the round started |
 | `predictions` | Predicted number correct per text/condition, out of `max` |
-| `events` | `hidden` events (tab/app switches) with stage + step, and `start` events (when each session was opened) |
+| `steps` | One row per completed step: server `started`/`finished`/`elapsed_sec`, `hidden_n` + `away_sec` (time the page was in the background), `extra` (`scroll_max` = how far down the text they scrolled, 0–1; `auto_submit` = self-test ran out of time) |
+| `survey` | End-of-study questionnaire, one row per item (see below) |
+| `events` | `hidden` / `visible` (tab/app switches), `start` (session opened), `device` (`detail` JSON: phone/tablet/desktop, screen size, time zone, browser) |
 
 Effective correctness = `override` if set, else `auto_correct`.
 
@@ -123,8 +142,8 @@ Participant endpoints authenticate with the header `X-Token: <token>`.
 | POST | `/api/join` | `{nickname, pin, lang, consent}` → `{token}`. Same nickname + PIN resumes. |
 | POST | `/api/login` | `{nickname, pin}` → `{token}`. After 8 wrong PINs for a nickname: `429` for 15 min. |
 | GET | `/api/state` | Current stage + step payload, or `wait` (`unlock_at`), or `done` (scores) |
-| POST | `/api/complete` | `{step_id, data}`. Data per step type: highlight `{selected:[i]}`, test `{answers:[{qid, answer, confidence, rt_ms}]}`, final `{answers:[{qid, answer, rt_ms}]}`, predict `{pred:{T1:n, T2:n}, belief}` |
-| POST | `/api/event` | `{type:"hidden", step_id}` |
+| POST | `/api/complete` | `{step_id, data}`. Data per step type: highlight `{selected:[i]}`, test `{answers:[{qid, answer, confidence, rt_ms}]}`, final `{answers:[{qid, answer, confidence, rt_ms, first_ms, edits}]}`, predict `{pred:{T1:n, T2:n}, belief}`, survey `{answers:{item: value}}`; highlight also takes `log:[{i, a:"on"|"off", t}]`, every step takes `scroll_max` |
+| POST | `/api/event` | `{type: "hidden"\|"visible"\|"device", step_id, detail?}` |
 | GET | `/reminder.ics?at=<unix>&n=2\|3&lang=` | Calendar event for the next session (no personal data) |
 
 Admin endpoints authenticate with the header `X-Admin-Key: <ADMIN_KEY>` (the admin page downloads files with this header, so the key never appears in URLs). If `ADMIN_KEY` is unset, a placeholder or shorter than 12 characters, all admin endpoints return `503`.
@@ -132,12 +151,13 @@ Admin endpoints authenticate with the header `X-Admin-Key: <ADMIN_KEY>` (the adm
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/admin/overview` | Participants summary + timing config |
-| GET | `/api/admin/answers` | All final answers with question, key, auto mark, override |
+| GET | `/api/admin/answers` | All answers (practice + final) with question, key, auto mark, override |
 | POST | `/api/admin/grade` | `{id, override: 1 / 0 / null}` |
 | POST | `/api/admin/exclude` | `{id, excluded: true/false}` |
 | POST | `/api/admin/reload-content` | Re-read `content.json` without restarting; returns validation warnings |
 | GET | `/api/admin/content-check` | Validation warnings for `content.json` |
-| GET | `/api/admin/export/{participants,answers,highlights,events}.csv` | UTF-8 CSV with BOM (opens correctly in Excel) |
+| GET | `/api/admin/export/{items,participants,answers,highlights,highlight_log,steps,survey,predictions,events}.csv` | UTF-8 CSV with BOM (opens correctly in Excel) |
+| GET | `/api/admin/insights` | Headline analyses (finished, non-excluded participants) |
 | GET | `/api/admin/backup.db` | Consistent copy of the whole SQLite database |
 
 Pages: `/` (participants), `/admin` (researcher), `/healthz`.
@@ -159,6 +179,7 @@ Pages: `/` (participants), `/admin` (researcher), `/healthz`.
 ```
 
 - `fact` links a final question to the practice question about the same fact (used for the hypercorrection analysis). Final questions should be **reworded**, not copied from practice.
+- `source` (optional) links a question to the sentence that contains the answer: `{"en": "a few words from that sentence", ...}` (or a list of snippets). Without it the sentence is found through the `accept` keywords. The admin page warns when a final question matches no sentence or several, so the "was this fact highlighted?" columns are reliable.
 - `accept` = keywords. Use stems for Russian (`бочон` matches бочонок/бочонка). Avoid very short keywords that appear inside other words. Numbers are matched as whole numbers. After editing, check the warnings at the top of the admin page (or run `pytest -q`).
 - A language is offered at sign-up only if **both** texts have a body in it.
 - Recommended: two texts of similar length (~250 words) and difficulty, 10–15 final questions each.
@@ -204,12 +225,12 @@ python tests/ui_walk.py shots ru tester_ru  # needs the server above; also en / 
 VIEWPORT=phone python tests/ui_walk.py shots ko tester_ko2
 ```
 
-`test_api.py` (30 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with the real 240 s / 48 h / 7 d values, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file.
+`test_api.py` (38 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with the real 240 s / 48 h / 7 d values, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file. It also checks every analysis column: `items.csv` links each final answer to its practice history and its highlighted sentence, the highlight tap log, per-step timing/time away/scroll depth/auto-submit, the questionnaire, device info, the Insights numbers, re-marking practice answers, and upgrading a database created by the older version.
 
-`ui_walk.py` clicks through all three sessions in a real browser and saves a screenshot of each screen. It also checks that a reload in the middle of the self-test keeps answers and confidence ratings, that untouched prediction sliders are refused, and that the calendar button is shown. It exits non-zero on any JavaScript error. It assumes the sample content (4 + 4 questions).
+`ui_walk.py` clicks through all three sessions in a real browser and saves a screenshot of each screen. It also checks that a reload in the middle of the self-test keeps answers and confidence ratings, that untouched prediction sliders are refused, that the questionnaire can't be skipped, and that the calendar button is shown. It exits non-zero on any JavaScript error. It assumes the sample content (4 + 4 questions).
 
 ### Verified
-- All 30 API tests pass.
+- All 38 API tests pass.
 - Browser walkthrough with no JavaScript errors in **en, ru and ko**, at **iPad (820×1180) and phone (390×844)** size. Russian confidence labels were shortened so they fit at 360 px width ("Наугад / Не очень / 50 на 50 / Скорее да / Точно знаю"). Korean text breaks between words (`word-break: keep-all`).
 - Docker image builds, the container becomes `healthy`, and the browser walkthrough passes against the container.
 - `deploy/setup-vps.sh` tested in a sandbox with a fake old `memory-service` compose project: removes it and its volume, creates `.env`, starts the app, installs the backup cron. A second run changes nothing. `reset-data.sh` moves the DB into backups.
@@ -270,34 +291,47 @@ sudo bash deploy/reset-data.sh     # warns if timings aren't the real ones; old 
 
 - **Target sample:** about 20–25 people finishing all 3 sessions, so recruit about 30–35 (expect around a third to drop out). With a paired design, that detects a medium-to-large difference (dz ≈ 0.6–0.8, α = .05, power = .80).
 - **Reminders:** yellow rows on the admin page = next session open but not started. Send these people a reminder on KakaoTalk.
-- **Exclusions:** exclude people with many tab switches during tests, sessions that took far too long ("Session min" column), or who say they reviewed the texts. They stay in the CSVs with `excluded=1`.
+- **Exclusions:** decide the rules before looking at results. Candidates: `survey_reviewed` = yes, `survey_notes` = yes, a lot of `away_sec` during tests, sessions that took far too long ("Session min" column), or a big deviation from the 48 h / 7 d gaps. Excluded people stay in the CSVs with `excluded=1`. They stay in the CSVs with `excluded=1`.
 - **Never edit `content.json` after real participants have started.**
 
-### Analysis starter (`answers.csv`)
+### Analysis starter (`items.csv`)
 
 ```python
 import pandas as pd
 from scipy import stats
 
-a = pd.read_csv("answers.csv")
-f = a[(a.kind == "final") & (a.excluded == 0)]
-per = f.pivot_table(index="nickname", columns="condition", values="correct", aggfunc="mean").dropna() * 100
+it = pd.read_csv("items.csv")
+it = it[it.excluded == 0]
+
+# H1: % correct per person and method, paired test
+per = it.pivot_table(index="nickname", columns="condition", values="final_correct", aggfunc="mean").dropna() * 100
 diff = per["test"] - per["highlight"]
 print(per.describe())
 print("routine better for", (diff > 0).sum(), "of", len(diff))
 print(stats.ttest_rel(per["test"], per["highlight"]))
 print(stats.wilcoxon(per["test"], per["highlight"]))
+print("Cohen's dz:", diff.mean() / diff.std())
 
-# Hypercorrection: Session 1 practice errors made with high confidence (4-5), then corrected by feedback
-p = a[(a.kind == "practice") & (a.stage == "day0")][["nickname", "text_id", "fact", "confidence", "auto_correct"]]
-m = p.merge(f[["nickname", "text_id", "fact", "correct"]], on=["nickname", "text_id", "fact"])
-m["group"] = m.apply(lambda r: "correct" if r.auto_correct else ("high-conf error" if r.confidence >= 4 else "low-conf error"), axis=1)
-print(m.groupby("group")["correct"].mean())
+# H2: predicted vs actual (% of the text's questions), per method
+pp = it.groupby(["nickname", "condition"]).agg(pred=("predicted_for_text", "first"), mx=("text_max", "first"),
+                                               actual=("final_correct", "mean")).reset_index()
+pp["pred_pct"] = 100 * pp.pred / pp.mx
+pp["actual_pct"] = 100 * pp.actual
+print(pp.groupby("condition")[["pred_pct", "actual_pct"]].mean())
+
+# Did highlighting a fact help? (highlight text only; highlighted_r2 = sentence highlighted at the end of round 2)
+hl = it[it.condition == "highlight"]
+print(hl.groupby("highlighted_r2")["final_correct"].agg(["mean", "count"]))
+
+# Hypercorrection: Session 1 self-test errors made with high confidence (4-5), corrected by feedback
+print(it[it.condition == "test"].groupby("s1_error_type")["final_correct"].agg(["mean", "count"]))
+
+# Calibration: accuracy by final-test confidence, per method; mean confidence per method
+print(it.pivot_table(index="final_confidence", columns="condition", values="final_correct", aggfunc="mean"))
+print(it.groupby("condition")["final_confidence"].mean())
 ```
 
-`participants.csv` holds predictions (`pred_routine`, `pred_usual`), `belief`, gaps between sessions (`gap_day0_day2_h` is measured from the end of Session 1 to the end of Session 2), tab switches, and minutes each session took (`s1_min`, `s2_min`, `s3_min`; much longer than ~15/15/5 means the session was interrupted). `highlights.csv` lists which sentence indices were highlighted. Use it to check whether highlighted facts were remembered better.
-
----
+`participants.csv` has one row per person: group, scores, predictions (`pred_routine`, `pred_usual`), `belief` (Session 2) and `survey_belief_after` (after the final test), the other questionnaire answers (`survey_*`), number of sentences highlighted (`hl_sentences_r1/r2`, `hl_share_r2`), mean final confidence per method, gaps between sessions (`gap_day0_day2_h` is measured from the end of Session 1 to the end of Session 2), minutes per session (`s1_min`, `s2_min`, `s3_min`; much longer than ~15/15/8 means it was interrupted), `away_sec` (total time the page was in the background), `tab_switches`, `tests_auto_submitted`, and device/time zone. `steps.csv` has the same timing per step, and `highlight_log.csv` has every highlight tap, e.g. for "how many sentences did people highlight, and when?".
 
 ## 6. Open items / ideas
 

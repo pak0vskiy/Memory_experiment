@@ -69,10 +69,15 @@ def practice_answers(text_id, right=True, conf=5):
                          "confidence": conf, "rt_ms": 1000} for q in qs]}
 
 
-def final_answers(text_id, n_right):
+def final_answers(text_id, n_right, conf=3):
     qs = main.CONTENT["texts"][text_id]["final"]
-    return {"answers": [{"qid": q["id"], "answer": q["accept"]["en"][0] if i < n_right else "dunno", "rt_ms": 900}
+    return {"answers": [{"qid": q["id"], "answer": q["accept"]["en"][0] if i < n_right else "dunno", "rt_ms": 900,
+                         "first_ms": 200, "edits": 4, "confidence": conf}
                         for i, q in enumerate(qs)]}
+
+
+SURVEY_OK = {"belief_after": "test", "harder": "test", "prior_T1": "2", "prior_T2": "1",
+             "reviewed": "no", "notes": "no", "habit": "reread"}
 
 
 def run_session1(client, clock, token):
@@ -225,8 +230,12 @@ def test_full_three_session_run(env):
     assert "sentences" not in st["step"]
     n_final = {t: len(main.CONTENT["texts"][t]["final"]) for t in main.TEXT_IDS}
     right = {routine: n_final[routine], usual: 1}
-    complete(client, tok, "final1", final_answers("T1", right["T1"]))
-    complete(client, tok, "final2", final_answers("T2", right["T2"]))
+    complete(client, tok, "final1", final_answers("T1", right["T1"], conf=5 if routine == "T1" else 2))
+    complete(client, tok, "final2", final_answers("T2", right["T2"], conf=5 if routine == "T2" else 2))
+    assert state(client, tok)["step"]["type"] == "survey"
+    bad = complete(client, tok, "survey", {"answers": {**SURVEY_OK, "habit": "sleep"}})
+    assert bad.status_code == 400 and "habit" in bad.json()["detail"]
+    assert complete(client, tok, "survey", {"answers": SURVEY_OK}).status_code == 200
 
     st = state(client, tok)
     assert st["stage"] == "done"
@@ -254,7 +263,7 @@ def test_full_three_session_run(env):
 
 # ------------------------------------------------------------------ marking
 @pytest.mark.parametrize("answer,key,ok", [
-    ("8", "8", True), ("8 legs", "8", True), ("eight legs", "eight", True), ("18", "8", False),
+    ("8", "8", True), ("8 legs", "8", True), ("0.5 mm", "05", True), ("0,5", "05", True), ("5", "05", False), ("eight legs", "eight", True), ("18", "8", False),
     ("2008", "8", False), ("in 2007.", "2007", True), ("20071", "2007", False), ("８", "8", True),
     ("Бочонок", "бочон", True), ("бочонком", "бочон", True), ("Ёлка", "елк", True), ("툰 상태", "툰", True), ("", "8", False),
 ])
@@ -331,3 +340,146 @@ def test_security_headers(env):
     r = client.get("/")
     assert r.headers["x-frame-options"] == "DENY" and r.headers["x-content-type-options"] == "nosniff"
     assert client.get("/docs").status_code == 404
+
+
+# ------------------------------------------------------------------ data collection for the analyses
+def run_all(client, clock, nick="bob", hl_selected=(0, 1), routine_right=True):
+    """Full run; returns (token, group, routine text, usual text)."""
+    tok = join(client, nick=nick).json()["token"]
+    grp = sqlite3.connect(main.DB_PATH).execute("SELECT grp FROM participants WHERE nickname=?", (nick,)).fetchone()[0]
+    routine, usual = main.text_for(grp, "test"), main.text_for(grp, "highlight")
+    st = state(client, tok)
+    clock.advance(240); complete(client, tok, "read1", {"scroll_max": 0.8})
+    clock.advance(240); complete(client, tok, "read2", {"scroll_max": 1.0})
+    state(client, tok)
+    clock.advance(180)   # used the whole self-test time: auto-submitted
+    complete(client, tok, "test", {**practice_answers(routine, right=False, conf=5), "auto": True})
+    clock.advance(60); complete(client, tok, "feedback")
+    clock.advance(48 * 3600); state(client, tok)
+    client.post("/api/event", headers=hdr(tok), json={"type": "hidden", "step_id": "hl1"})
+    clock.advance(30)
+    client.post("/api/event", headers=hdr(tok), json={"type": "visible", "step_id": "hl1"})
+    clock.advance(210)
+    log = [{"i": i, "a": "on", "t": 1000 * (k + 1)} for k, i in enumerate(hl_selected)] + [{"i": 99, "a": "on", "t": 1}]
+    complete(client, tok, "hl1", {"selected": list(hl_selected), "log": log})
+    clock.advance(240); complete(client, tok, "hl2", {"selected": list(hl_selected), "log": []})
+    state(client, tok)
+    clock.advance(60); complete(client, tok, "test", practice_answers(routine, right=routine_right, conf=3))
+    clock.advance(180); complete(client, tok, "feedback")
+    complete(client, tok, "predict", {"pred": {routine: 1, usual: 3}, "belief": "highlight"})
+    clock.advance(7 * 24 * 3600); state(client, tok)
+    n = len(main.CONTENT["texts"][usual]["final"])
+    for sid, tid in (("final1", "T1"), ("final2", "T2")):
+        complete(client, tok, sid, final_answers(tid, n if tid == routine else 2, conf=4))
+    complete(client, tok, "survey", {"answers": SURVEY_OK})
+    assert state(client, tok)["stage"] == "done"
+    return tok, grp, routine, usual
+
+
+def csv_rows(client, what):
+    import csv as _csv
+    import io as _io
+    r = client.get(f"/api/admin/export/{what}.csv", headers=ADMIN)
+    assert r.status_code == 200
+    return list(_csv.DictReader(_io.StringIO(r.text.lstrip("\ufeff"))))
+
+
+def test_items_link_facts_to_highlights_and_practice(env):
+    client, clock = env
+    _, grp, routine, usual = run_all(client, clock)
+    items = csv_rows(client, "items")
+    n_final = sum(len(main.CONTENT["texts"][t]["final"]) for t in main.TEXT_IDS)
+    assert len(items) == n_final
+    lang_src = {q["id"]: q["_src"]["en"] for q in main.CONTENT["texts"][usual]["final"]}
+    for r in items:
+        assert r["final_confidence"] == "4" and r["final_edits"] == "4" and r["final_first_ms"] == "200"
+        if r["condition"] == "highlight":
+            expect = int(any(i in (0, 1) for i in lang_src[r["qid"]]))
+            assert r["highlighted_r1"] == r["highlighted_r2"] == str(expect)
+            assert r["s1_correct"] == "" and r["predicted_for_text"] == "3"
+        else:
+            assert r["highlighted_r2"] == ""
+            assert r["s1_correct"] == "0" and r["s1_confidence"] == "5" and r["s1_error_type"] == "high-conf error"
+            assert r["s2_correct"] == "1" and r["predicted_for_text"] == "1"
+        assert r["prior_knowledge"] == ("2" if r["text_id"] == "T1" else "1")
+    # at least one usual-text fact highlighted and one not, so the comparison is possible with the sample
+    flags = {r["highlighted_r2"] for r in items if r["condition"] == "highlight"}
+    assert flags == {"0", "1"}
+
+
+def test_behaviour_logs(env):
+    client, clock = env
+    tok, grp, routine, usual = run_all(client, clock)
+    client.post("/api/event", headers=hdr(tok), json={"type": "device", "detail": {"kind": "tablet", "sw": 820, "sh": 1180, "tz": "Asia/Seoul", "ua": "x"}})
+    log = csv_rows(client, "highlight_log")
+    assert [(r["round"], r["sentence"], r["action"]) for r in log] == [("1", "0", "on"), ("1", "1", "on")]   # bad index dropped
+    steps = {(r["stage"], r["step_id"]): r for r in csv_rows(client, "steps")}
+    assert len(steps) == 4 + 5 + 3
+    assert json.loads(steps[("day0", "read1")]["extra"]) == {"scroll_max": 0.8}
+    assert json.loads(steps[("day0", "test")]["extra"])["auto_submit"] is True
+    assert steps[("day2", "hl1")]["hidden_n"] == "1" and float(steps[("day2", "hl1")]["away_sec"]) == 30.0
+    assert float(steps[("day0", "read1")]["elapsed_sec"]) == 240.0
+    survey = {r["item"]: r["value"] for r in csv_rows(client, "survey")}
+    assert survey == SURVEY_OK
+    preds = csv_rows(client, "predictions")
+    assert {r["condition"]: r["predicted"] for r in preds} == {"test": "1", "highlight": "3"}
+    part = csv_rows(client, "participants")[0]
+    assert part["away_sec"] == "30.0" and part["tests_auto_submitted"] == "1" and part["device"] == "tablet"
+    assert part["survey_habit"] == "reread" and part["hl_sentences_r2"] == "2" and part["final_conf_usual"] == "4.0"
+    ev = csv_rows(client, "events")
+    assert any(r["type"] == "device" and "Asia/Seoul" in r["detail"] for r in ev)
+
+
+def test_insights(env):
+    client, clock = env
+    run_all(client, clock, nick="p1", hl_selected=(0, 1))
+    run_all(client, clock, nick="p2", hl_selected=(0, 1, 2, 3, 4, 5, 6, 7), routine_right=False)
+    d = client.get("/api/admin/insights", headers=ADMIN).json()
+    assert d["participants"] == 2 and d["items"] == 16
+    assert d["by_condition"]["test"]["accuracy"] == 1.0 and d["by_condition"]["highlight"]["accuracy"] == 0.5
+    assert d["by_condition"]["test"]["mean_confidence"] == 4.0
+    hl = d["highlighting"]
+    assert hl["highlighted"]["n"] + hl["not_highlighted"]["n"] == 8
+    assert d["s1_errors"]["high-conf error"]["n"] == 8 and d["s1_errors"]["high-conf error"]["accuracy"] == 1.0
+    assert d["calibration"]["test"]["4"]["n"] == 8
+    assert d["prediction_vs_actual"]["test"] == {"predicted_pct": 25.0, "actual_pct": 100.0}
+    assert d["beliefs"] == {"before_test": {"highlight": 2}, "after_test": {"test": 2}}
+
+
+def test_practice_answers_can_be_regraded(env):
+    client, clock = env
+    run_all(client, clock)
+    answers = client.get("/api/admin/answers", headers=ADMIN).json()["answers"]
+    assert {a["kind"] for a in answers} == {"practice", "final"}
+    p = next(a for a in answers if a["kind"] == "practice" and a["stage"] == "day0")
+    assert p["question"] and p["key"]
+    client.post("/api/admin/grade", headers=ADMIN, json={"id": p["id"], "override": 1})
+    items = csv_rows(client, "items")
+    assert any(r["s1_correct"] == "1" and r["s1_error_type"] == "correct" for r in items)
+
+
+def test_old_database_is_migrated(tmp_path, monkeypatch):
+    db = tmp_path / "study.db"
+    con = sqlite3.connect(db)
+    con.executescript("""
+      CREATE TABLE participants (id INTEGER PRIMARY KEY, nickname TEXT NOT NULL UNIQUE COLLATE NOCASE, pin_hash TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE, lang TEXT NOT NULL, grp TEXT NOT NULL, created_at REAL NOT NULL,
+        day0_done REAL, day2_done REAL, day9_done REAL, stage TEXT, step INTEGER DEFAULT 0, step_started REAL,
+        test_used REAL, belief TEXT, excluded INTEGER DEFAULT 0);
+      CREATE TABLE answers (id INTEGER PRIMARY KEY, pid INTEGER NOT NULL, stage TEXT NOT NULL, kind TEXT NOT NULL,
+        text_id TEXT NOT NULL, condition TEXT NOT NULL, qid TEXT NOT NULL, fact TEXT, answer TEXT, confidence INTEGER,
+        auto_correct INTEGER NOT NULL, override INTEGER, rt_ms INTEGER, ts REAL NOT NULL);
+      CREATE TABLE events (id INTEGER PRIMARY KEY, pid INTEGER NOT NULL, stage TEXT, step TEXT, type TEXT NOT NULL, ts REAL NOT NULL);
+      INSERT INTO participants (nickname,pin_hash,token,lang,grp,created_at) VALUES ('old','h','tok','en','A',1);
+    """)
+    con.commit(); con.close()
+    monkeypatch.setattr(main, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(main, "DB_PATH", db)
+    with TestClient(main.app):
+        pass
+    con = sqlite3.connect(db)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(answers)")}
+    assert {"first_ms", "edits"} <= cols
+    assert "detail" in {r[1] for r in con.execute("PRAGMA table_info(events)")}
+    assert con.execute("SELECT nickname FROM participants").fetchone()[0] == "old"
+    assert con.execute("SELECT COUNT(*) FROM steps").fetchone()[0] == 0

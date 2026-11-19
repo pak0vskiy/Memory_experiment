@@ -148,3 +148,7 @@ input[type=range].unset { opacity: .45; }
 
 /* calendar reminder link */
 a.btn.cal { display: inline-block; text-decoration: none; margin-top: 8px; font-weight: 600; }
+
+/* questionnaire */
+small.note { margin: -2px 0 10px; }
+.q .options { margin-top: 8px; }

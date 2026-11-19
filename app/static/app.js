@@ -136,8 +136,46 @@
     if (current.stage === "wait") return renderWait(current);
     if (current.stage === "done") return renderDone(current);
     const step = current.step;
+    scrollMax = 0;
+    sendDeviceOnce();
     ({ read: renderRead, highlight: renderHighlight, test: renderTest, feedback: renderFeedback,
-       predict: renderPredict, final: renderFinal })[step.type](step);
+       predict: renderPredict, final: renderFinal, survey: renderSurvey })[step.type](step);
+  }
+
+  // ------------------------------------------------------------ behaviour logging
+  // How far down the study text the participant scrolled (0-1), sent with each step.
+  let scrollMax = 0;
+  function trackScroll() {
+    const art = document.querySelector("article.text");
+    const vh = window.innerHeight;
+    let f;
+    if (art) {
+      const r = art.getBoundingClientRect();
+      f = r.height > 0 ? (vh - r.top) / r.height : 1;
+    } else {
+      const H = document.documentElement.scrollHeight;
+      f = H > 0 ? (window.scrollY + vh) / H : 1;
+    }
+    scrollMax = Math.max(scrollMax, Math.min(1, Math.max(0, f)));
+  }
+  window.addEventListener("scroll", trackScroll, { passive: true });
+  window.addEventListener("resize", trackScroll, { passive: true });
+
+  // Device / time zone, once per page load (helps explain odd timings; no personal data).
+  let deviceSent = false;
+  function sendDeviceOnce() {
+    if (deviceSent || !token) return;
+    deviceSent = true;
+    const ua = navigator.userAgent || "";
+    const touch = (navigator.maxTouchPoints || 0) > 0;
+    const kind = /iPad|Tablet/i.test(ua) || (/Macintosh/.test(ua) && touch) || (/Android/i.test(ua) && !/Mobile/i.test(ua))
+      ? "tablet" : /Mobi|iPhone|Android/i.test(ua) ? "phone" : "desktop";
+    let tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* ignore */ }
+    api("/api/event", { type: "device", step_id: current && current.step ? current.step.id : "", detail: {
+      kind, ua: ua.slice(0, 300), sw: screen.width, sh: screen.height, vw: window.innerWidth, vh: window.innerHeight,
+      dpr: window.devicePixelRatio, touch, tz, tz_off: -new Date().getTimezoneOffset(), nav_lang: navigator.language,
+    } }).catch(() => {});
   }
 
   function logout() {
@@ -154,6 +192,8 @@
   // still fails, a banner with "Try again" appears (the draft stays in localStorage meanwhile).
   async function complete(step, data) {
     document.getElementById("savefail")?.remove();
+    trackScroll();
+    data = { ...data, scroll_max: Math.round(scrollMax * 1000) / 1000 };
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         await api("/api/complete", { step_id: step.id, data });
@@ -174,10 +214,11 @@
     document.body.append(bar);
   }
 
-  // Log when the participant leaves the page during a session (tab switch, app switch).
+  // Log when the participant leaves the page during a session (tab/app switch) and comes back,
+  // so the time spent away can be computed per step.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && token && current && current.step) {
-      api("/api/event", { type: "hidden", step_id: current.step.id }).catch(() => {});
+    if (token && current && current.step) {
+      api("/api/event", { type: document.hidden ? "hidden" : "visible", step_id: current.step.id }).catch(() => {});
     }
   });
 
@@ -288,24 +329,34 @@
   function renderHighlight(step) {
     const r1 = step.round === 1;
     const draft = loadDraft(step);
-    const { el, sel } = textBlock(step, true, draft ? draft.selected : step.selected,
-      (selected) => saveDraft(step, { selected }));
+    const started = Date.now() - stepMs(step);
+    // every tap: sentence index, on/off, ms since the round started
+    const log = (draft && draft.log) || [];
+    let prev = new Set(draft ? draft.selected : step.selected);
+    const { el, sel } = textBlock(step, true, [...prev], (selected) => {
+      const now = new Set(selected);
+      for (const i of now) if (!prev.has(i)) log.push({ i, a: "on", t: Date.now() - started });
+      for (const i of prev) if (!now.has(i)) log.push({ i, a: "off", t: Date.now() - started });
+      prev = now;
+      saveDraft(step, { selected, log });
+    });
     $app.replaceChildren(
       ...header(t(r1 ? "hlTitle1" : "hlTitle2", { title: step.title }), t(r1 ? "hlHint1" : "hlHint2")), el,
-      h("div", { class: "actions" }, timedContinue(step, () => ({ selected: [...sel] }))));
+      h("div", { class: "actions" }, timedContinue(step, () => ({ selected: [...sel], log }))));
   }
 
   // Elapsed ms within the step, measured from server step start (so it survives reloads).
   const stepMs = (step) => Math.round(((step.dur || 0) - (step.remaining || 0)) * 1000);
 
-  function renderTest(step) {
-    const started = Date.now() - stepMs(step);
+  // One card per question: text answer + 1-5 confidence. Tracks first keystroke, last edit and
+  // number of edits, and keeps a draft so a reload doesn't lose anything.
+  function answerCards(step, started) {
     const draft = loadDraft(step) || {};
     const rows = step.questions.map((q, n) => {
       const d = draft[q.qid] || {};
       const input = h("input", { class: "answer", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": t("yourAnswer") });
       input.value = d.a || "";
-      let conf = d.c ?? null, lastEdit = d.rt ?? null;
+      let conf = d.c ?? null, lastEdit = d.rt ?? null, firstKey = d.f ?? null, edits = d.e ?? 0;
       const btns = t("conf").map((label, k) => h("button", {
         type: "button", class: "conf" + (conf === k + 1 ? " on" : ""), "aria-pressed": conf === k + 1 ? "true" : "false",
         onclick: (e) => {
@@ -316,17 +367,30 @@
           persist();
         },
       }, h("b", {}, String(k + 1)), h("span", {}, label)));
-      input.addEventListener("input", () => { lastEdit = Date.now() - started; persist(); });
+      input.addEventListener("input", () => {
+        lastEdit = Date.now() - started;
+        if (firstKey === null) firstKey = lastEdit;
+        edits += 1;
+        persist();
+      });
       const card = h("div", { class: "q card" },
         h("p", { class: "qtext" }, `${n + 1}. ${q.q}`), input,
         h("p", { class: "label" }, t("sure")), h("div", { class: "confs" }, btns));
-      return { q, input, card, get conf() { return conf; }, get rt() { return lastEdit; } };
+      return { q, input, card, get conf() { return conf; }, get rt() { return lastEdit; },
+               get first() { return firstKey; }, get edits() { return edits; } };
     });
     function persist() {
       const out = {};
-      for (const r of rows) out[r.q.qid] = { a: r.input.value, c: r.conf, rt: r.rt };
+      for (const r of rows) out[r.q.qid] = { a: r.input.value, c: r.conf, rt: r.rt, f: r.first, e: r.edits };
       saveDraft(step, out);
     }
+    const collect = () => rows.map(r => ({ qid: r.q.qid, answer: r.input.value, confidence: r.conf,
+                                            rt_ms: r.rt, first_ms: r.first, edits: r.edits }));
+    return { rows, collect };
+  }
+
+  function renderTest(step) {
+    const { rows, collect } = answerCards(step, Date.now() - stepMs(step));
     const errBox = h("div");
     const submit = h("button", { class: "btn primary" }, t("submit"));
     let sent = false;
@@ -334,7 +398,7 @@
       if (sent) return;
       if (!force && rows.some(r => r.conf === null)) { errBox.replaceChildren(msg(t("needConf"))); return; }
       sent = true; submit.disabled = true; stopTimer();
-      complete(step, { answers: rows.map(r => ({ qid: r.q.qid, answer: r.input.value, confidence: r.conf, rt_ms: r.rt })) });
+      complete(step, { answers: collect(), auto: !!force });
     };
     submit.addEventListener("click", () => send(false));
     $app.replaceChildren(...header(t("testTitle", { title: step.title }), t("testHint")),
@@ -385,26 +449,55 @@
   }
 
   function renderFinal(step) {
-    const started = Date.now();
-    const draft = loadDraft(step) || {};
-    const rows = step.questions.map((q, n) => {
-      const d = draft[q.qid] || {};
-      const input = h("input", { class: "answer", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": t("yourAnswer") });
-      input.value = d.a || "";
-      let lastEdit = d.rt ?? null;
-      input.addEventListener("input", () => {
-        lastEdit = Date.now() - started;
-        const out = {};
-        for (const r of rows) out[r.q.qid] = { a: r.input.value, rt: r.rt };
-        saveDraft(step, out);
-      });
-      return { q, input, card: h("div", { class: "q card" }, h("p", { class: "qtext" }, `${n + 1}. ${q.q}`), input), get rt() { return lastEdit; } };
-    });
+    // no time limit: measure from when the page was shown
+    const { rows, collect } = answerCards(step, Date.now());
+    const errBox = h("div");
     const btn = h("button", { class: "btn primary", onclick: () => {
+      if (rows.some(r => r.conf === null)) return errBox.replaceChildren(msg(t("needConf")));
       btn.disabled = true;
-      complete(step, { answers: rows.map(r => ({ qid: r.q.qid, answer: r.input.value, rt_ms: r.rt })) });
+      complete(step, { answers: collect() });
     } }, t("submit"));
     $app.replaceChildren(...header(t("finalTitle", { title: step.title }), t("finalHint")), ...rows.map(r => r.card),
+      errBox, h("div", { class: "actions" }, btn));
+  }
+
+  // End-of-study questionnaire (after the final test, before results). All items single choice.
+  function renderSurvey(step) {
+    const draft = loadDraft(step) || {};
+    const answers = { ...draft };
+    const S = t("survey");
+    const titles = Object.fromEntries(step.texts.map(x => [x.text, x.title]));
+    const errBox = h("div");
+    const choice = (item, values, labels, wide) => {
+      const box = h("div", { class: wide ? "options" : "scale", role: "radiogroup" }, values.map((v, k) => h("button", {
+        type: "button", class: (wide ? "chip wide" : "chip") + (answers[item] === v ? " on" : ""), role: "radio",
+        "aria-checked": answers[item] === v ? "true" : "false",
+        onclick: (e) => {
+          answers[item] = v;
+          errBox.replaceChildren();
+          [...box.children].forEach(b => { const on = b === e.currentTarget; b.classList.toggle("on", on); b.setAttribute("aria-checked", on ? "true" : "false"); });
+          saveDraft(step, answers);
+        },
+      }, labels[k])));
+      return box;
+    };
+    const cards = Object.entries(step.items).map(([item, values]) => {
+      let q, labels, wide = true;
+      if (item.startsWith("prior_")) {
+        q = S.prior.replace("{title}", t("quote", { title: titles[item.slice(6)] }));
+        labels = values.map((v, k) => `${v} · ${S.priorScale[k]}`);
+      } else {
+        q = S[item].q; labels = values.map(v => S[item].o[v]);
+      }
+      return h("div", { class: "card q", "data-item": item }, h("p", { class: "qtext" }, q),
+        S[item] && S[item].note ? h("small", { class: "note" }, S[item].note) : null, choice(item, values, labels, wide));
+    });
+    const btn = h("button", { class: "btn primary", onclick: () => {
+      if (Object.keys(step.items).some(k => !answers[k])) return errBox.replaceChildren(msg(S.needAll));
+      btn.disabled = true;
+      complete(step, { answers });
+    } }, t("continue"));
+    $app.replaceChildren(h("h1", {}, S.title), h("p", { class: "hint" }, S.hint), ...cards, errBox,
       h("div", { class: "actions" }, btn));
   }
 

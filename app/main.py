@@ -65,6 +65,8 @@ _fails = defaultdict(list)
 async def lifespan(_app):
     with db() as con:
         con.executescript(SCHEMA)
+    with db() as con:
+        migrate(con)
     problems = load_content()
     for msg in problems:
         log.warning("content.json: %s", msg)
@@ -132,9 +134,40 @@ CREATE TABLE IF NOT EXISTS predictions (
 );
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
-  stage TEXT, step TEXT, type TEXT NOT NULL, ts REAL NOT NULL
+  stage TEXT, step TEXT, type TEXT NOT NULL, ts REAL NOT NULL, detail TEXT
+);
+-- one row per completed step: server-side timing + small client extras (scroll depth, auto-submit)
+CREATE TABLE IF NOT EXISTS steps (
+  id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
+  stage TEXT NOT NULL, step_id TEXT NOT NULL, type TEXT NOT NULL, text_id TEXT, condition TEXT,
+  started REAL, finished REAL NOT NULL, elapsed_sec REAL, hidden_n INTEGER, away_sec REAL, extra TEXT
+);
+-- every highlight tap: which sentence, on/off, ms since the round started
+CREATE TABLE IF NOT EXISTS highlight_log (
+  id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
+  round INTEGER NOT NULL, text_id TEXT NOT NULL, sentence INTEGER NOT NULL, action TEXT NOT NULL,
+  t_ms INTEGER, ts REAL NOT NULL
+);
+-- end-of-study questionnaire, one row per item
+CREATE TABLE IF NOT EXISTS survey (
+  id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
+  item TEXT NOT NULL, value TEXT, ts REAL NOT NULL
 );
 """
+
+# Columns added after the first version: added in place to an existing database.
+MIGRATIONS = {
+    "answers": {"first_ms": "INTEGER", "edits": "INTEGER"},
+    "events": {"detail": "TEXT"},
+}
+
+
+def migrate(con):
+    for table, cols in MIGRATIONS.items():
+        have = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+        for col, typ in cols.items():
+            if col not in have:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
 
 
 # ---------------------------------------------------------------- content
@@ -193,6 +226,19 @@ def validate_content(raw):
     return out
 
 
+def source_sentences(t, q, lang):
+    """Indices of the sentence(s) in text `t` that contain the answer to question `q`.
+    Uses q["source"][lang] (a snippet of the sentence, or a list of snippets) if given, otherwise the
+    sentences that match the question's accept keywords. Used to tell whether a fact was highlighted."""
+    sents = t["sentences"].get(lang) or []
+    src = (q.get("source") or {}).get(lang)
+    if src:
+        snippets = [src] if isinstance(src, str) else src
+        return [i for i, x in enumerate(sents) if any(norm(sn) and norm(sn) in norm(x["s"]) for sn in snippets)]
+    keys = (q.get("accept") or {}).get(lang) or []
+    return [i for i, x in enumerate(sents) if any(key_matches(x["s"], k) for k in keys)]
+
+
 def tr_strict(obj, lang):
     if isinstance(obj, dict):
         return (obj.get(lang) or "").strip()
@@ -218,6 +264,19 @@ def load_content():
                     if s.strip():
                         sents.append({"s": s.strip(), "p": pi})
             t["sentences"][lang] = sents
+    for tid in TEXT_IDS:
+        t = texts[tid]
+        for q in t.get("final", []) + t.get("practice", []):
+            q["_src"] = {l: source_sentences(t, q, l) for l in LANGS if t["sentences"].get(l)}
+            if q in t.get("final", []):
+                for l, idx in q["_src"].items():
+                    how = "'source' snippet" if (q.get("source") or {}).get(l) else "accept keywords"
+                    if not idx:
+                        problems.append(f"{tid}/final/{q['id']}: no sentence found for this fact in '{l}' via {how};"
+                                        f" add \"source\": {{\"{l}\": \"<words from the sentence>\"}} so highlights can be linked")
+                    elif len(idx) > 1 and how == "accept keywords":
+                        problems.append(f"{tid}/final/{q['id']}: keywords match {len(idx)} sentences in '{l}' {idx};"
+                                        f" add a 'source' snippet to pick the right one")
     CONTENT.clear()
     CONTENT.update(raw)
     return problems
@@ -242,8 +301,9 @@ def key_matches(answer, key):
     if not k:
         return False
     if k.isdigit():
-        digits_only = re.sub(r"\D+", " ", unicodedata.normalize("NFKC", answer or ""))
-        return k in digits_only.split()
+        # numbers in the answer, with decimal/thousands separators dropped: "0.5" -> "05", "2,007" -> "2007"
+        nums = re.findall(r"\d+(?:[.,]\d+)*", unicodedata.normalize("NFKC", answer or ""))
+        return k in [re.sub(r"[.,]", "", n) for n in nums]
     return k in norm(answer)
 
 
@@ -291,8 +351,22 @@ def plan(p, stage):
         return [
             {"id": "final1", "type": "final", "text": "T1"},
             {"id": "final2", "type": "final", "text": "T2"},
+            {"id": "survey", "type": "survey"},
         ]
     return []
+
+
+# End-of-study questionnaire (after the final test, before the results are shown).
+# item -> allowed values. Labels live in i18n.js.
+SURVEY = {
+    "belief_after": ("highlight", "test", "same"),     # which method worked better (asked again)
+    "harder": ("highlight", "test", "same"),           # which felt harder / more effortful
+    "prior_T1": ("1", "2", "3", "4", "5"),             # prior knowledge of each topic
+    "prior_T2": ("1", "2", "3", "4", "5"),
+    "reviewed": ("no", "little", "yes"),               # looked up / reviewed / discussed between sessions
+    "notes": ("no", "yes"),                            # wrote things down / screenshots
+    "habit": ("reread", "highlight", "selftest", "notes", "other"),  # usual way of studying for exams
+}
 
 
 def current_stage(p, now):
@@ -445,6 +519,9 @@ def step_payload(con, p, step, now):
         ]
     elif step["type"] == "final":
         payload["questions"] = [{"qid": q["id"], "q": tr(q["q"], lang)} for q in t["final"]]
+    elif step["type"] == "survey":
+        payload["texts"] = [{"text": tid, "title": tr(CONTENT["texts"][tid]["title"], lang)} for tid in TEXT_IDS]
+        payload["items"] = {k: list(v) for k, v in SURVEY.items()}
     if step["type"] == "feedback":
         dur = max(FEEDBACK_MIN_SEC, BLOCK_SEC - (p["test_used"] or 0))
     else:
@@ -510,10 +587,27 @@ async def complete(request: Request, x_token: str = Header(None)):
             if elapsed < need - TOLERANCE:
                 raise HTTPException(409, "time not up yet")
 
+        if step["type"] == "survey":
+            answers = data.get("answers") or {}
+            missing = [k for k, ok in SURVEY.items() if str(answers.get(k)) not in ok]
+            if missing:
+                raise HTTPException(400, f"survey incomplete: {', '.join(missing)}")
+            for k in SURVEY:
+                con.execute("INSERT INTO survey (pid,item,value,ts) VALUES (?,?,?,?)", (p["id"], k, str(answers[k]), now))
+
         if step["type"] == "highlight":
-            sel = sorted({int(i) for i in data.get("selected", [])})
+            n_sent = len(CONTENT["texts"][step["text"]]["sentences"][lang])
+            sel = sorted({int(i) for i in data.get("selected", []) if 0 <= int(i) < n_sent})
             con.execute("INSERT INTO highlights (pid,round,text_id,sentences,ts) VALUES (?,?,?,?,?)",
                         (p["id"], step["round"], step["text"], json.dumps(sel), now))
+            for ev in (data.get("log") or [])[:2000]:
+                try:
+                    i, action, t_ms = int(ev.get("i")), ev.get("a"), int(ev.get("t") or 0)
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if 0 <= i < n_sent and action in ("on", "off"):
+                    con.execute("INSERT INTO highlight_log (pid,round,text_id,sentence,action,t_ms,ts) VALUES (?,?,?,?,?,?,?)",
+                                (p["id"], step["round"], step["text"], i, action, t_ms, now))
         elif step["type"] in ("test", "final"):
             t = CONTENT["texts"][step["text"]]
             items = {q["id"]: q for q in (t["practice"] if step["type"] == "test" else t["final"])}
@@ -521,13 +615,13 @@ async def complete(request: Request, x_token: str = Header(None)):
             kind = "practice" if step["type"] == "test" else "final"
             for qid, q in items.items():
                 a = given.get(qid, {})
-                conf = a.get("confidence")
                 con.execute(
-                    "INSERT INTO answers (pid,stage,kind,text_id,condition,qid,fact,answer,confidence,auto_correct,rt_ms,ts)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO answers (pid,stage,kind,text_id,condition,qid,fact,answer,confidence,auto_correct,"
+                    "rt_ms,first_ms,edits,ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (p["id"], stage, kind, step["text"], conds[step["text"]], qid, q.get("fact", qid),
-                     (a.get("answer") or "")[:500], int(conf) if conf is not None else None,
-                     auto_score(a.get("answer"), q, lang), a.get("rt_ms"), now),
+                     str(a.get("answer") or "")[:500], small_int(a.get("confidence"), 1, 5),
+                     auto_score(a.get("answer"), q, lang), small_int(a.get("rt_ms"), 0, 10**8),
+                     small_int(a.get("first_ms"), 0, 10**8), small_int(a.get("edits"), 0, 10**6), now),
                 )
             if step["type"] == "test":
                 con.execute("UPDATE participants SET test_used=? WHERE id=?", (min(elapsed, TEST_MAX_SEC), p["id"]))
@@ -541,6 +635,22 @@ async def complete(request: Request, x_token: str = Header(None)):
             if belief in ("highlight", "test", "same"):
                 con.execute("UPDATE participants SET belief=? WHERE id=?", (belief, p["id"]))
 
+        # timing + behaviour for every step
+        started = p["step_started"]
+        evs = con.execute("SELECT type, ts FROM events WHERE pid=? AND ts>=? AND type IN ('hidden','visible') ORDER BY ts",
+                          (p["id"], started or now)).fetchall()
+        extra = {}
+        if isinstance(data.get("scroll_max"), (int, float)):
+            extra["scroll_max"] = round(max(0.0, min(1.0, float(data["scroll_max"]))), 3)
+        if step["type"] == "test":
+            extra["auto_submit"] = bool(data.get("auto"))
+        con.execute(
+            "INSERT INTO steps (pid,stage,step_id,type,text_id,condition,started,finished,elapsed_sec,hidden_n,away_sec,extra)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (p["id"], stage, step["id"], step["type"], step.get("text"), conds.get(step.get("text")),
+             started, now, round(elapsed, 2), sum(1 for e in evs if e["type"] == "hidden"),
+             round(away_seconds(evs, now), 1), json.dumps(extra) if extra else None))
+
         nxt = p["step"] + 1
         if nxt >= len(steps):
             col = {"day0": "day0_done", "day2": "day2_done", "day9": "day9_done"}[stage]
@@ -551,15 +661,42 @@ async def complete(request: Request, x_token: str = Header(None)):
         return {"ok": True}
 
 
+def small_int(v, lo, hi):
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return None
+    return v if lo <= v <= hi else None
+
+
+def away_seconds(evs, now):
+    """Total time between each 'hidden' event and the next 'visible' one (page in background)."""
+    total, hid = 0.0, None
+    for e in evs:
+        if e["type"] == "hidden" and hid is None:
+            hid = e["ts"]
+        elif e["type"] == "visible" and hid is not None:
+            total += e["ts"] - hid
+            hid = None
+    if hid is not None:
+        total += now - hid
+    return total
+
+
+EVENT_TYPES = ("hidden", "visible", "device")
+
+
 @app.post("/api/event")
 async def event(request: Request, x_token: str = Header(None)):
     body = await request.json()
-    if body.get("type") not in ("hidden",):
+    if body.get("type") not in EVENT_TYPES:
         raise HTTPException(400, "unknown event type")
+    detail = body.get("detail")
+    detail = json.dumps(detail, ensure_ascii=False)[:1500] if isinstance(detail, dict) else None
     with db() as con:
         p = get_participant(con, x_token)
-        con.execute("INSERT INTO events (pid,stage,step,type,ts) VALUES (?,?,?,?,?)",
-                    (p["id"], p["stage"], str(body.get("step_id", ""))[:40], body["type"], time.time()))
+        con.execute("INSERT INTO events (pid,stage,step,type,ts,detail) VALUES (?,?,?,?,?,?)",
+                    (p["id"], p["stage"], str(body.get("step_id", ""))[:40], body["type"], time.time(), detail))
     return {"ok": True}
 
 
@@ -574,6 +711,19 @@ def participant_summary(con, p, now):
 
     def minutes(stage_name, done):
         return round((done - starts[stage_name]) / 60, 1) if done and stage_name in starts else None
+    away = con.execute("SELECT COALESCE(SUM(away_sec),0) a FROM steps WHERE pid=?", (p["id"],)).fetchone()["a"]
+    dev = con.execute("SELECT detail FROM events WHERE pid=? AND type='device' ORDER BY id DESC LIMIT 1", (p["id"],)).fetchone()
+    dev = json.loads(dev["detail"]) if dev and dev["detail"] else {}
+    surv = {r["item"]: r["value"] for r in con.execute("SELECT item, value FROM survey WHERE pid=? ORDER BY id", (p["id"],))}
+    hl = {}
+    for r in con.execute("SELECT round, sentences FROM highlights WHERE pid=? ORDER BY id", (p["id"],)):
+        hl[r["round"]] = len(json.loads(r["sentences"]))
+    usual_text = text_for(p["grp"], "highlight")
+    n_sent = len(CONTENT["texts"][usual_text]["sentences"].get(p["lang"]) or []) or None
+    fconf = {c: con.execute("SELECT AVG(confidence) m FROM answers WHERE pid=? AND kind='final' AND condition=?",
+                            (p["id"], c)).fetchone()["m"] for c in ("test", "highlight")}
+    auto = con.execute("SELECT COUNT(*) c FROM steps WHERE pid=? AND type='test' AND extra LIKE '%\"auto_submit\": true%'",
+                       (p["id"],)).fetchone()["c"]
     if stage == "wait":
         status, due = ("waiting for Day 2" if p["day2_done"] is None else "waiting for Day 9"), unlock
     elif stage == "done":
@@ -593,7 +743,120 @@ def participant_summary(con, p, now):
         "belief": p["belief"], "tab_switches": hidden,
         "s1_min": minutes("day0", p["day0_done"]), "s2_min": minutes("day2", p["day2_done"]),
         "s3_min": minutes("day9", p["day9_done"]),
+        "away_sec": round(away, 1), "tests_auto_submitted": auto,
+        "routine_text": text_for(p["grp"], "test"), "usual_text": usual_text,
+        "hl_sentences_r1": hl.get(1), "hl_sentences_r2": hl.get(2), "text_sentences": n_sent,
+        "hl_share_r2": round(hl[2] / n_sent, 3) if hl.get(2) is not None and n_sent else None,
+        "final_conf_routine": round(fconf["test"], 2) if fconf["test"] is not None else None,
+        "final_conf_usual": round(fconf["highlight"], 2) if fconf["highlight"] is not None else None,
+        **{f"survey_{k}": surv.get(k) for k in SURVEY},
+        "device": dev.get("kind"), "screen": f'{dev.get("sw")}x{dev.get("sh")}' if dev.get("sw") else None,
+        "tz": dev.get("tz"), "user_agent": dev.get("ua"),
     }
+
+
+def build_items(con):
+    """Analysis-ready table: one row per participant x final question, with everything known about
+    that fact for that person (practice history, confidence, whether its sentence was highlighted)."""
+    out = []
+    parts = {p["id"]: p for p in con.execute("SELECT * FROM participants")}
+    hl = {}
+    for r in con.execute("SELECT pid, round, text_id, sentences FROM highlights ORDER BY id"):
+        hl[(r["pid"], r["round"])] = set(json.loads(r["sentences"]))
+    preds = {(r["pid"], r["text_id"]): r["predicted"] for r in con.execute("SELECT * FROM predictions")}
+    prior = {(r["pid"], r["item"]): r["value"] for r in con.execute("SELECT * FROM survey WHERE item LIKE 'prior_%'")}
+    practice = {}
+    for r in con.execute("SELECT * FROM answers WHERE kind='practice' ORDER BY id"):
+        practice[(r["pid"], r["stage"], r["text_id"], r["fact"])] = r
+    for a in con.execute("SELECT * FROM answers WHERE kind='final' ORDER BY pid, text_id, id"):
+        p = parts[a["pid"]]
+        t = CONTENT["texts"][a["text_id"]]
+        q = next((x for x in t["final"] if x["id"] == a["qid"]), {})
+        src = (q.get("_src") or {}).get(p["lang"], [])
+        s0 = practice.get((p["id"], "day0", a["text_id"], a["fact"]))
+        s2 = practice.get((p["id"], "day2", a["text_id"], a["fact"]))
+        is_usual = a["condition"] == "highlight"
+
+        def was_hl(rnd):
+            if not is_usual or (p["id"], rnd) not in hl or not src:
+                return None
+            return int(any(i in hl[(p["id"], rnd)] for i in src))
+        if s0 is None:
+            hyper = None
+        elif effective(s0):
+            hyper = "correct"
+        else:
+            hyper = "high-conf error" if (s0["confidence"] or 0) >= 4 else "low-conf error"
+        out.append({
+            "nickname": p["nickname"], "group": p["grp"], "lang": p["lang"], "excluded": p["excluded"],
+            "text_id": a["text_id"], "condition": a["condition"], "read_first": int(a["text_id"] == "T1"),
+            "qid": a["qid"], "fact": a["fact"],
+            "final_answer": a["answer"], "final_correct": effective(a), "final_confidence": a["confidence"],
+            "final_rt_ms": a["rt_ms"], "final_first_ms": a["first_ms"], "final_edits": a["edits"],
+            "s1_answer": s0["answer"] if s0 else None, "s1_correct": effective(s0) if s0 else None,
+            "s1_confidence": s0["confidence"] if s0 else None,
+            "s2_answer": s2["answer"] if s2 else None, "s2_correct": effective(s2) if s2 else None,
+            "s2_confidence": s2["confidence"] if s2 else None,
+            "s1_error_type": hyper,
+            "source_sentences": json.dumps(src), "highlighted_r1": was_hl(1), "highlighted_r2": was_hl(2),
+            "predicted_for_text": preds.get((p["id"], a["text_id"])), "text_max": len(t["final"]),
+            "prior_knowledge": prior.get((p["id"], f"prior_{a['text_id']}")),
+            "belief": p["belief"],
+        })
+    return out
+
+
+def _mean(xs):
+    xs = [x for x in xs if x is not None]
+    return round(sum(xs) / len(xs), 3) if xs else None
+
+
+def insights(con):
+    """Headline numbers for the presentation, from non-excluded participants who finished."""
+    done = {p["nickname"] for p in con.execute("SELECT nickname FROM participants WHERE day9_done IS NOT NULL AND excluded=0")}
+    items = [r for r in build_items(con) if r["nickname"] in done]
+    by = lambda f: [r for r in items if f(r)]
+
+    def acc(rows):
+        return {"n": len(rows), "accuracy": _mean([r["final_correct"] for r in rows])}
+    out = {"participants": len(done), "items": len(items)}
+    out["by_condition"] = {c: {**acc(by(lambda r, c=c: r["condition"] == c)),
+                               "mean_confidence": _mean([r["final_confidence"] for r in items if r["condition"] == c])}
+                           for c in ("test", "highlight")}
+    out["highlighting"] = {k: acc(by(lambda r, v=v: r["highlighted_r2"] == v))
+                           for k, v in (("highlighted", 1), ("not_highlighted", 0))}
+    out["s1_errors"] = {k: acc(by(lambda r, k=k: r["s1_error_type"] == k))
+                        for k in ("correct", "high-conf error", "low-conf error")}
+    # calibration: accuracy at each final confidence level, per condition
+    out["calibration"] = {c: {str(lv): acc(by(lambda r, c=c, lv=lv: r["condition"] == c and r["final_confidence"] == lv))
+                              for lv in range(1, 6)} for c in ("test", "highlight")}
+    # prediction vs reality, per condition (as % of the text's questions)
+    pr = {}
+    for c in ("test", "highlight"):
+        rows = by(lambda r, c=c: r["condition"] == c)
+        people = {}
+        for r in rows:
+            people.setdefault(r["nickname"], r)
+        pr[c] = {"predicted_pct": _mean([100 * x["predicted_for_text"] / x["text_max"] for x in people.values()
+                                         if x["predicted_for_text"] is not None]),
+                 "actual_pct": _mean([100 * a for a in [r["final_correct"] for r in rows]])}
+    out["prediction_vs_actual"] = pr
+    beliefs = {}
+    for r in con.execute("SELECT p.belief b, s.value a FROM participants p LEFT JOIN survey s ON s.pid=p.id AND"
+                         " s.item='belief_after' WHERE p.day9_done IS NOT NULL AND p.excluded=0"):
+        beliefs.setdefault("before_test", {}).setdefault(r["b"] or "?", 0)
+        beliefs["before_test"][r["b"] or "?"] += 1
+        beliefs.setdefault("after_test", {}).setdefault(r["a"] or "?", 0)
+        beliefs["after_test"][r["a"] or "?"] += 1
+    out["beliefs"] = beliefs
+    return out
+
+
+@app.get("/api/admin/insights")
+def admin_insights(x_admin_key: str = Header(None)):
+    require_admin(x_admin_key)
+    with db() as con:
+        return insights(con)
 
 
 @app.get("/api/admin/overview")
@@ -613,11 +876,12 @@ def admin_answers(x_admin_key: str = Header(None)):
     with db() as con:
         rows = con.execute(
             "SELECT a.*, p.nickname, p.lang FROM answers a JOIN participants p ON p.id=a.pid"
-            " WHERE a.kind='final' ORDER BY a.text_id, a.qid, a.auto_correct, a.id"
+            " ORDER BY a.kind, a.text_id, a.qid, a.auto_correct, a.id"
         ).fetchall()
     out = []
     for r in rows:
-        q = next((x for x in CONTENT["texts"][r["text_id"]]["final"] if x["id"] == r["qid"]), {})
+        pool = CONTENT["texts"][r["text_id"]]["final" if r["kind"] == "final" else "practice"]
+        q = next((x for x in pool if x["id"] == r["qid"]), {})
         out.append({**dict(r), "question": tr(q.get("q", ""), r["lang"]), "key": tr(q.get("answer", ""), r["lang"]),
                     "effective": effective(r)})
     return {"answers": out}
@@ -702,11 +966,30 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             rows = con.execute(
                 "SELECT a.id, p.nickname, p.grp, p.lang, p.excluded, a.stage, a.kind, a.text_id, a.condition, a.qid, a.fact,"
                 " a.answer, a.confidence, a.auto_correct, a.override,"
-                " COALESCE(a.override, a.auto_correct) AS correct, a.rt_ms, a.ts"
+                " COALESCE(a.override, a.auto_correct) AS correct, a.rt_ms, a.first_ms, a.edits, a.ts"
                 " FROM answers a JOIN participants p ON p.id=a.pid ORDER BY a.pid, a.id"
             ).fetchall()
             header = rows[0].keys() if rows else ["id"]
             return csv_response("answers.csv", header, [list(r) for r in rows])
+        if what == "items":
+            rows = build_items(con)
+            header = list(rows[0].keys()) if rows else ["nickname"]
+            return csv_response("items.csv", header, [[r[h] for h in header] for r in rows])
+        simple = {
+            "highlight_log": "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentence, h.action, h.t_ms, h.ts"
+                             " FROM highlight_log h JOIN participants p ON p.id=h.pid ORDER BY h.pid, h.id",
+            "steps": "SELECT s.id, p.nickname, p.grp, p.lang, p.excluded, s.stage, s.step_id, s.type, s.text_id, s.condition,"
+                     " s.started, s.finished, s.elapsed_sec, s.hidden_n, s.away_sec, s.extra"
+                     " FROM steps s JOIN participants p ON p.id=s.pid ORDER BY s.pid, s.id",
+            "survey": "SELECT s.id, p.nickname, p.grp, p.lang, p.excluded, s.item, s.value, s.ts"
+                      " FROM survey s JOIN participants p ON p.id=s.pid ORDER BY s.pid, s.id",
+            "predictions": "SELECT r.id, p.nickname, p.grp, p.lang, p.excluded, r.text_id, r.condition, r.predicted, r.max, r.ts"
+                           " FROM predictions r JOIN participants p ON p.id=r.pid ORDER BY r.pid, r.id",
+        }
+        if what in simple:
+            rows = con.execute(simple[what]).fetchall()
+            header = rows[0].keys() if rows else ["id"]
+            return csv_response(f"{what}.csv", header, [list(r) for r in rows])
         if what == "highlights":
             rows = con.execute(
                 "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentences, h.ts"
@@ -716,7 +999,7 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             return csv_response("highlights.csv", header, [list(r) for r in rows])
         if what == "events":
             rows = con.execute(
-                "SELECT e.id, p.nickname, e.stage, e.step, e.type, e.ts FROM events e JOIN participants p ON p.id=e.pid ORDER BY e.id"
+                "SELECT e.id, p.nickname, e.stage, e.step, e.type, e.ts, e.detail FROM events e JOIN participants p ON p.id=e.pid ORDER BY e.id"
             ).fetchall()
             header = rows[0].keys() if rows else ["id"]
             return csv_response("events.csv", header, [list(r) for r in rows])

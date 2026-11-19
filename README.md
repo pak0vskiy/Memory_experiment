@@ -46,12 +46,14 @@ Participants use it on iPad, phone or laptop, in **English, Russian, Korean or S
 
 Every session starts with an untimed instructions screen (`intro`): Session 1 explains the platform (timers, Continue unlocks when time is up, no going back, text hidden in self-tests, confidence scale, stay on the page, reloads are safe, no notes, nickname + PIN, calendar reminder); Session 2 explains highlighting and lets participants try it on a practice paragraph that isn't saved; Session 3 explains the final test. The durations shown come from the server config, so they're always right. Time spent on each instructions screen is in `steps.csv`.
 
-**Highlighting** marks whole sentences (the unit used to link facts to highlights):
-- finger: tap a sentence to highlight it, tap again to remove; swiping scrolls as usual
-- Apple Pencil or mouse: press and drag, like selecting text: every sentence from where the stroke starts to where the pen is (in reading order) gets highlighted, whatever path the pen takes; a drag that starts on a highlighted sentence erases instead (Pencil strokes don't scroll the page)
-- keyboard: Enter/Space on a focused sentence
+**Highlighting works per word**, like a highlighter pen. (For Chinese the unit is a character; runs of digits or Latin letters such as "2004" stay together.) Students mark single words, phrases or whole sentences, often too much (Winchell, Lan & Mozer 2020; the CHI 2024 constrained-highlighting study), so free word-level marking is the realistic "usual way".
+- Apple Pencil or mouse: press and drag. Every word from where the stroke starts to the word under the pen (in reading order) is highlighted, whatever path the pen takes; moving back un-does words that leave the range. A stroke that starts on a highlighted word erases. Pencil strokes don't scroll the page.
+- finger: tap a word to toggle it; press and hold (~0.35 s), then drag to mark a range (like iPad text selection); a quick swipe scrolls as usual.
+- keyboard: Enter/Space on a focused sentence toggles the whole sentence.
 
-Every change is logged with its method (`touch` / `pen` / `mouse` / `key`).
+Each tap or stroke is logged as one row: word range, on/off, method (`touch` / `pen` / `mouse` / `key`), time. There is no limit on how much can be highlighted; the amount is recorded (`hl_words_r2`, `hl_share_r2`).
+
+**Linking highlights to facts:** each question has *answer words*: the words in its source sentence that contain an accept keyword (e.g. "23", "Patek", "fructose"). `items.csv` gives, per fact, `highlighted_r1/r2` (were the answer words highlighted?) and `sentence_hl_r1/r2` / `sentence_share_r2` (was anything in the fact's sentence highlighted, and how much of it?).
 
 Rules the app enforces:
 - Timers on reading, highlighting and feedback steps can't be skipped. The server rejects early "continue".
@@ -69,7 +71,7 @@ Rules the app enforces:
 |---|---|---|
 | H1: does the routine beat highlighting? | Final answers per text/condition, auto-marked + your overrides | `items.csv`, `answers.csv` |
 | H2: do people believe highlighting works better? | Predicted score per text (end of Session 2); "which method works better?" asked at the end of Session 2 **and again after the final test**; "which felt harder?" | `items.csv` (`predicted_for_text`), `participants.csv` (`belief`, `survey_belief_after`, `survey_harder`), `predictions.csv` |
-| Does highlighting a fact help remember it? | Which sentences were highlighted (each round, plus every tap with time), and which sentence holds each fact → per final question `highlighted_r1` / `highlighted_r2` | `items.csv`, `highlights.csv`, `highlight_log.csv` |
+| Does highlighting a fact help remember it? | Which words were highlighted (each round, plus every tap/stroke with time), and which words carry each fact's answer → per final question `highlighted_r1/r2` (answer words) and `sentence_hl_r1/r2` (anything in its sentence) | `items.csv`, `highlights.csv`, `highlight_log.csv` |
 | Confident errors (hypercorrection) | Session 1 and 2 self-test answers with confidence, linked to the same fact in the final test → `s1_error_type` = correct / high-conf error / low-conf error | `items.csv` |
 | Confidence vs. accuracy (calibration, feeling of knowing) | Confidence 1–5 on every final answer, for **both** methods | `items.csv` (`final_confidence`), `participants.csv` (`final_conf_routine`, `final_conf_usual`) |
 | Data quality / exclusions | Time away from the page per step, tab switches, scroll depth on reading, auto-submitted self-tests, minutes per session, gaps between sessions, "did you review the texts / take notes?", device | `steps.csv`, `participants.csv`, `survey.csv`, `events.csv` |
@@ -132,8 +134,8 @@ memory-study/
 |---|---|
 | `participants` | nickname (unique, case-insensitive), PIN hash, token, lang, group (`A`/`B`), `day0_done` / `day2_done` / `day9_done` timestamps, current `stage` / `step` / `step_started`, `test_used` (seconds used in last self-test), `belief`, `excluded` |
 | `answers` | One row per answer: `stage`, `kind` (`practice`/`final`), `text_id`, `condition` (`test`/`highlight`), `qid`, `fact`, `answer`, `confidence` (1–5, practice **and final**), `auto_correct`, `override` (admin mark or NULL), `rt_ms` (last edit), `first_ms` (first keystroke), `edits` (keystrokes), `ts` |
-| `highlights` | Per highlight round: `round` (1/2), `text_id`, `sentences` (JSON list of sentence indices at the end of the round) |
-| `highlight_log` | Every highlight change: `round`, `text_id`, `sentence`, `action` (`on`/`off`), `method` (`touch`/`pen`/`mouse`/`key`), `t_ms` since the round started |
+| `highlights` | Per highlight round: `round` (1/2), `text_id`, `words` (JSON list of highlighted word indices at the end of the round) and `sentences` (sentences containing any highlighted word) |
+| `highlight_log` | Every tap/stroke: `round`, `text_id`, `word_from`, `word_to`, `action` (`on`/`off`), `method` (`touch`/`pen`/`mouse`/`key`), `sentence` (of the first word), `t_ms` since the round started |
 | `predictions` | Predicted number correct per text/condition, out of `max` |
 | `steps` | One row per completed step: server `started`/`finished`/`elapsed_sec`, `hidden_n` + `away_sec` (time the page was in the background), `extra` (`scroll_max` = how far down the text they scrolled, 0–1; `auto_submit` = self-test ran out of time) |
 | `survey` | End-of-study questionnaire, one row per item (see below) |
@@ -151,7 +153,7 @@ Participant endpoints authenticate with the header `X-Token: <token>`.
 | POST | `/api/join` | `{nickname, pin, lang, consent}` → `{token}`. Same nickname + PIN resumes. |
 | POST | `/api/login` | `{nickname, pin}` → `{token}`. After 8 wrong PINs for a nickname: `429` for 15 min. |
 | GET | `/api/state` | Current stage + step payload, or `wait` (`unlock_at`), or `done` (scores) |
-| POST | `/api/complete` | `{step_id, data}`. Data per step type: highlight `{selected:[i]}`, test `{answers:[{qid, answer, confidence, rt_ms}]}`, final `{answers:[{qid, answer, confidence, rt_ms, first_ms, edits}]}`, predict `{pred:{T1:n, T2:n}, belief}`, survey `{answers:{item: value}}`; highlight also takes `log:[{i, a:"on"|"off", t, m:"touch"|"pen"|"mouse"|"key"}]`, every step takes `scroll_max` |
+| POST | `/api/complete` | `{step_id, data}`. Data per step type: highlight `{selected:[i]}`, test `{answers:[{qid, answer, confidence, rt_ms}]}`, final `{answers:[{qid, answer, confidence, rt_ms, first_ms, edits}]}`, predict `{pred:{T1:n, T2:n}, belief}`, survey `{answers:{item: value}}`; highlight `{words:[k], log:[{a:"on"|"off", f, to, t, m:"touch"|"pen"|"mouse"|"key"}]}` (older sentence-level `{selected:[i]}` is still accepted), every step takes `scroll_max` |
 | POST | `/api/event` | `{type: "hidden"\|"visible"\|"device", step_id, detail?}` |
 | GET | `/reminder.ics?at=<unix>&n=2\|3&lang=` | Calendar event for the next session (no personal data) |
 
@@ -236,13 +238,13 @@ python tests/ui_walk.py shots ru tester_ru  # needs the server above; also en / 
 VIEWPORT=phone python tests/ui_walk.py shots ko tester_ko2
 ```
 
-`test_api.py` (44 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with real-length timers (240 s) and the 48 h / 7 d gaps, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file. It also checks every analysis column: `items.csv` links each final answer to its practice history and its highlighted sentence, the highlight tap log, per-step timing/time away/scroll depth/auto-submit, the questionnaire, device info, the Insights numbers, re-marking practice answers, and upgrading a database created by the older version.
+`test_api.py` (48 tests) covers sign-up/login and PIN lockout, group balancing, timers and step order with real-length timers (240 s) and the 48 h / 7 d gaps, the text being hidden during tests, duplicate submits, the feedback time rule, a full 3-session run with predictions, scores, admin re-marking and CSV exports, keyword marking (numbers, Russian stems, ё, Korean, full-width digits), admin auth, backups, content validation and the calendar file. It also checks every analysis column: `items.csv` links each final answer to its practice history and its highlighted sentence, the highlight tap log, per-step timing/time away/scroll depth/auto-submit, the questionnaire, device info, the Insights numbers, re-marking practice answers, and upgrading a database created by the older version.
 
 `ui_walk.py` clicks through all three sessions in a real browser and saves a screenshot of each screen. It also goes through the instructions screen of each session, highlights by tapping and by dragging with the mouse (on the practice paragraph and the real text), checks that a reload in the middle of the self-test keeps answers and confidence ratings, that untouched prediction sliders are refused, that the questionnaire can't be skipped, and that the calendar button is shown. It exits non-zero on any JavaScript error.
 
 ### Verified
-- All 44 API tests pass.
-- Highlighting with a simulated Apple Pencil (`pointerType: pen` via Chrome DevTools): drag paints, a drag starting on a highlight erases, a finger tap toggles exactly once, and each change is logged with its method. Real iPad + Pencil still to be tried.
+- All 48 API tests pass.
+- Word-level highlighting with simulated input via Chrome DevTools: finger tap toggles one word, press-and-hold + drag marks a range, a quick swipe scrolls without highlighting, Apple Pencil (`pointerType: pen`) strokes mark a range, starting on a highlight erases; each tap/stroke is logged once with its method. Real iPad + Pencil still to be tried.
 - Browser walkthrough with no JavaScript errors in **en, ru and ko**, at **iPad (820×1180) and phone (390×844)** size. Russian confidence labels were shortened so they fit at 360 px width ("Наугад / Не очень / 50 на 50 / Скорее да / Точно знаю"). Korean text breaks between words (`word-break: keep-all`).
 - Docker image builds, the container becomes `healthy`, and the browser walkthrough passes against the container.
 - `deploy/setup-vps.sh` tested in a sandbox with a fake old `memory-service` compose project: removes it and its volume, creates `.env`, starts the app, installs the backup cron. A second run changes nothing. `reset-data.sh` moves the DB into backups.
@@ -335,9 +337,10 @@ pp["pred_pct"] = 100 * pp.pred / pp.mx
 pp["actual_pct"] = 100 * pp.actual
 print(pp.groupby("condition")[["pred_pct", "actual_pct"]].mean())
 
-# Did highlighting a fact help? (highlight text only; highlighted_r2 = sentence highlighted at the end of round 2)
+# Did highlighting a fact help? (highlight text only; end of round 2)
 hl = it[it.condition == "highlight"]
-print(hl.groupby("highlighted_r2")["final_correct"].agg(["mean", "count"]))
+print(hl.groupby("highlighted_r2")["final_correct"].agg(["mean", "count"]))   # answer words highlighted
+print(hl.groupby("sentence_hl_r2")["final_correct"].agg(["mean", "count"]))   # anything in its sentence
 
 # Hypercorrection: Session 1 self-test errors made with high confidence (4-5), corrected by feedback
 print(it[it.condition == "test"].groupby("s1_error_type")["final_correct"].agg(["mean", "count"]))
@@ -347,7 +350,7 @@ print(it.pivot_table(index="final_confidence", columns="condition", values="fina
 print(it.groupby("condition")["final_confidence"].mean())
 ```
 
-`participants.csv` has one row per person: group, scores, predictions (`pred_routine`, `pred_usual`), `belief` (Session 2) and `survey_belief_after` (after the final test), the other questionnaire answers (`survey_*`), number of sentences highlighted (`hl_sentences_r1/r2`, `hl_share_r2`), mean final confidence per method, gaps between sessions (`gap_day0_day2_h` is measured from the end of Session 1 to the end of Session 2), minutes per session (`s1_min`, `s2_min`, `s3_min`; much longer than ~15/15/8 means it was interrupted), `away_sec` (total time the page was in the background), `tab_switches`, `tests_auto_submitted`, and device/time zone. `steps.csv` has the same timing per step, and `highlight_log.csv` has every highlight tap, e.g. for "how many sentences did people highlight, and when?".
+`participants.csv` has one row per person: group, scores, predictions (`pred_routine`, `pred_usual`), `belief` (Session 2) and `survey_belief_after` (after the final test), the other questionnaire answers (`survey_*`), amount highlighted (`hl_words_r1/r2`, `hl_share_r2` = share of the text's words, `hl_sentences_r1/r2`), mean final confidence per method, gaps between sessions (`gap_day0_day2_h` is measured from the end of Session 1 to the end of Session 2), minutes per session (`s1_min`, `s2_min`, `s3_min`; much longer than ~15/15/8 means it was interrupted), `away_sec` (total time the page was in the background), `tab_switches`, `tests_auto_submitted`, and device/time zone. `steps.csv` has the same timing per step, and `highlight_log.csv` has every highlight tap, e.g. for "how many sentences did people highlight, and when?".
 
 ## 6. Open items / ideas
 

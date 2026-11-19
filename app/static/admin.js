@@ -212,7 +212,7 @@
       tbl("3. Beliefs: which method works better?", "Asked at the end of Session 2, and again after the final test (before results).",
         ["Answer", "Before final test", "After final test"],
         opts.map(o => [{ highlight: "Highlighting", test: "Self-testing", same: "Same" }[o], (bel.before_test || {})[o] || 0, (bel.after_test || {})[o] || 0])),
-      tbl("4. Did highlighting a fact help? (highlight text only)", "Final accuracy for facts whose sentence was highlighted in round 2 vs. not.",
+      tbl("4. Did highlighting a fact help? (highlight text only)", "Final accuracy for facts whose answer words were highlighted (end of round 2) vs. not. Per-sentence version: sentence_hl_r2 in items.csv.",
         ["Fact was…", "Answers", "Correct"],
         [["highlighted", d.highlighting.highlighted.n, P(d.highlighting.highlighted.accuracy)],
          ["not highlighted", d.highlighting.not_highlighted.n, P(d.highlighting.not_highlighted.accuracy)]]),

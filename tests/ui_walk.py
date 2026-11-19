@@ -36,8 +36,8 @@ def start_session(page, name):
 
 
 def drag_over(page, sents, first, last):
-    """Mouse-drag along the text from sentence `first` to sentence `last` (indices into the `sents`
-    locator), passing through every line box in between, the way a Pencil stroke follows the lines."""
+    """Mouse-drag along the text from element `first` to element `last` (indices into the `sents`
+    locator: words), passing through every line box in between, the way a Pencil stroke follows the lines."""
     sents.nth(first).evaluate("e => e.scrollIntoView({ block: 'center' })")   # whole stroke must be on screen
     page.wait_for_timeout(100)
     pts = []
@@ -99,22 +99,22 @@ with sync_playwright() as p:
     shot(page, "05_wait")
     time.sleep(6)
     page.reload()
-    # Session 2 instructions: try the practice paragraph (tap one sentence, mouse-drag over the rest)
+    # Session 2 instructions: try the practice paragraph (tap one word, mouse-drag over a few more)
     page.wait_for_selector("ol.howto")
-    practice = page.locator(".card.try .sent")
+    practice = page.locator(".card.try .w")
     practice.nth(0).click()
-    drag_over(page, practice, 1, 3)
-    assert page.locator(".card.try .sent.hl").count() == 4, "practice drag-highlight failed"
+    drag_over(page, practice, 3, 8)
+    n = page.locator(".card.try .w.hl").count()
+    assert n == 1 + 6, f"practice highlighting failed: {n} words"
     start_session(page, "05b_intro_s2")
     page.wait_for_selector("article.selectable")
-    sents = page.locator("article.selectable .sent")
-    for i in (0, 2):
-        sents.nth(i).click()
-    # drag from sentence 4 to 5 with the mouse paints both
-    drag_over(page, sents, 4, 5)
-    on = page.evaluate("() => [...document.querySelectorAll('article.selectable .sent')].flatMap((s, i) => s.classList.contains('hl') ? [i] : [])")
-    assert set(on) == {0, 2, 4, 5}, f"drag-highlight failed: {on}"
-    print("highlighted after drag:", on)
+    ws = page.locator("article.selectable .w")
+    for i in (0, 5):
+        ws.nth(i).click()                     # single words
+    drag_over(page, ws, 10, 30)               # a range across lines
+    on = page.evaluate("() => [...document.querySelectorAll('article.selectable .w')].flatMap((w, i) => w.classList.contains('hl') ? [i] : [])")
+    assert set(on) == {0, 5, *range(10, 31)}, f"word highlighting failed: {on}"
+    print("highlighted words:", len(on))
     shot(page, "06_highlight")
     wait_continue(page)          # hl1
     page.wait_for_selector("article.selectable")

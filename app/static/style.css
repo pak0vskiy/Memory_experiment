@@ -89,10 +89,13 @@ label.check input { width: 22px; height: 22px; margin-top: 3px; flex: none; }
 }
 .text p { margin: 0 0 1em; }
 .text p:last-child { margin-bottom: 0; }
-.sent { border-radius: 4px; padding: 2px 0; transition: background-color .12s; }
-.selectable .sent { cursor: pointer; }
-@media (hover: hover) { .selectable .sent:hover { background: color-mix(in srgb, var(--hl) 35%, transparent); } }
-.sent.hl, .selectable .sent.hl:hover { background: var(--hl); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.sent { border-radius: 4px; }
+/* highlighting is per word; the space between two highlighted words is coloured too, so a phrase
+   looks like one marker stroke */
+.selectable { touch-action: manipulation; }            /* no double-tap zoom on the text */
+.selectable .w { cursor: text; padding: 2px 0; transition: background-color .08s; }
+@media (hover: hover) { .selectable .w:hover { background: color-mix(in srgb, var(--hl) 35%, transparent); } }
+.w.hl, .gap.hl, .selectable .w.hl:hover { background: var(--hl); padding: 2px 0; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 
 .q .qtext, .qtext { font-weight: 600; margin: 0 0 6px; }
 .confs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }

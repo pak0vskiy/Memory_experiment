@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS answers (
 );
 CREATE TABLE IF NOT EXISTS highlights (
   id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
-  round INTEGER NOT NULL, text_id TEXT NOT NULL, sentences TEXT NOT NULL, ts REAL NOT NULL
+  round INTEGER NOT NULL, text_id TEXT NOT NULL, sentences TEXT NOT NULL, ts REAL NOT NULL, words TEXT
 );
 CREATE TABLE IF NOT EXISTS predictions (
   id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS steps (
 CREATE TABLE IF NOT EXISTS highlight_log (
   id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES participants(id),
   round INTEGER NOT NULL, text_id TEXT NOT NULL, sentence INTEGER NOT NULL, action TEXT NOT NULL,
-  t_ms INTEGER, ts REAL NOT NULL, method TEXT
+  t_ms INTEGER, ts REAL NOT NULL, method TEXT, word_from INTEGER, word_to INTEGER
 );
 -- end-of-study questionnaire, one row per item
 CREATE TABLE IF NOT EXISTS survey (
@@ -173,7 +173,8 @@ CREATE TABLE IF NOT EXISTS survey (
 MIGRATIONS = {
     "answers": {"first_ms": "INTEGER", "edits": "INTEGER"},
     "events": {"detail": "TEXT"},
-    "highlight_log": {"method": "TEXT"},
+    "highlight_log": {"method": "TEXT", "word_from": "INTEGER", "word_to": "INTEGER"},
+    "highlights": {"words": "TEXT"},
     "participants": {"tester": "INTEGER DEFAULT 0"},
 }
 
@@ -244,6 +245,48 @@ def validate_content(raw):
     return out
 
 
+def tokenize(sentence, lang):
+    """Highlight units. Words split on spaces; Chinese has no spaces, so each character is a unit,
+    with runs of digits/Latin letters (2004, Apple) kept together. Punctuation stays attached."""
+    if lang == "zh":
+        return re.findall(r"[0-9A-Za-z]+|\S", sentence)
+    return sentence.split()
+
+
+def answer_words(t, q, lang):
+    """Global word indices (in text t) of the words that carry the answer to q: inside the fact's
+    source sentence, the words that contain an accept keyword. Plain keywords are tried first;
+    '=x' keywords only if nothing else is found (e.g. Korean 산 would otherwise also hit 이산화탄소)."""
+    words = t["words"].get(lang) or []
+    src = set((q.get("_src") or {}).get(lang) or [])
+    if not src:
+        return []
+    keys = (q.get("accept") or {}).get(lang) or []
+    joiner = "" if lang == "zh" else " "
+
+    def find(key_list):
+        hit = set()
+        for si in src:
+            idx = [k for k, w in enumerate(words) if w["s"] == si]
+            text, spans, pos = "", [], 0
+            for k in idx:
+                if text:
+                    text += joiner
+                spans.append((len(text), len(text) + len(words[k]["w"]), k))
+                text += words[k]["w"]
+            low = text.lower().replace("ё", "е")
+            for key in key_list:
+                kk = key.lstrip("=").lower().replace("ё", "е")
+                if not kk:
+                    continue
+                pat = rf"(?<!\d){re.escape(kk)}(?!\d)" if kk.isdigit() else re.escape(kk)
+                for m in re.finditer(pat, low):
+                    hit.update(k for a, b, k in spans if a < m.end() and m.start() < b)
+        return hit
+    hit = find([k for k in keys if not k.startswith("=")]) or find([k for k in keys if k.startswith("=")])
+    return sorted(hit)
+
+
 def source_sentences(t, q, lang):
     """Indices of the sentence(s) in text `t` that contain the answer to question `q`.
     Uses q["source"][lang] (a snippet of the sentence, or a list of snippets) if given, otherwise the
@@ -273,6 +316,7 @@ def load_content():
             raise RuntimeError(f"content.json needs texts {TEXT_IDS}")
         t = texts[tid]
         t["sentences"] = {}
+        t["words"] = {}
         for lang in LANGS:
             body = t.get("body", {}).get(lang, "")
             paras = [p.strip() for p in body.split("\n\n") if p.strip()]
@@ -281,12 +325,23 @@ def load_content():
                 for s in SENT_SPLIT.split(para):
                     if s.strip():
                         sents.append({"s": s.strip(), "p": pi})
+            # highlight units: each sentence gets its words, and the text gets a flat word list
+            words = []
+            for si, x in enumerate(sents):
+                x["w"] = tokenize(x["s"], lang)
+                words.extend({"w": w, "s": si} for w in x["w"])
             t["sentences"][lang] = sents
+            t.setdefault("words", {})[lang] = words
     for tid in TEXT_IDS:
         t = texts[tid]
         for q in t.get("final", []) + t.get("practice", []):
             q["_src"] = {l: source_sentences(t, q, l) for l in LANGS if t["sentences"].get(l)}
+            q["_words"] = {l: answer_words(t, q, l) for l in q["_src"]}
             if q in t.get("final", []):
+                for l, aw in q["_words"].items():
+                    if q["_src"][l] and not aw:
+                        problems.append(f"{tid}/final/{q['id']}: no accept keyword appears in its sentence in '{l}',"
+                                        f" so the answer words can't be linked to highlights")
                 for l, idx in q["_src"].items():
                     how = "'source' snippet" if (q.get("source") or {}).get(l) else "accept keywords"
                     if not idx:
@@ -518,10 +573,11 @@ def step_payload(con, p, step, now):
         if step["type"] == "highlight":
             payload["round"] = step["round"]
             prev = con.execute(
-                "SELECT sentences FROM highlights WHERE pid=? AND text_id=? ORDER BY id DESC LIMIT 1",
+                "SELECT sentences, words FROM highlights WHERE pid=? AND text_id=? ORDER BY id DESC LIMIT 1",
                 (p["id"], step["text"]),
             ).fetchone()
             payload["selected"] = json.loads(prev["sentences"]) if prev else []
+            payload["selected_words"] = sorted(hl_words(t, lang, prev)) if prev else []
     elif step["type"] == "test":
         payload["questions"] = [{"qid": q["id"], "q": tr(q["q"], lang)} for q in t["practice"]]
     elif step["type"] == "feedback":
@@ -631,20 +687,34 @@ async def complete(request: Request, x_token: str = Header(None)):
                 con.execute("INSERT INTO survey (pid,item,value,ts) VALUES (?,?,?,?)", (p["id"], k, str(answers[k]), now))
 
         if step["type"] == "highlight":
-            n_sent = len(CONTENT["texts"][step["text"]]["sentences"][lang])
-            sel = sorted({int(i) for i in data.get("selected", []) if 0 <= int(i) < n_sent})
-            con.execute("INSERT INTO highlights (pid,round,text_id,sentences,ts) VALUES (?,?,?,?,?)",
-                        (p["id"], step["round"], step["text"], json.dumps(sel), now))
-            for ev in (data.get("log") or [])[:2000]:
+            tx = CONTENT["texts"][step["text"]]
+            words = tx["words"][lang]
+            n_sent, n_words = len(tx["sentences"][lang]), len(words)
+            if "words" in data:      # word-level (current client)
+                wsel = sorted({int(i) for i in data.get("words", []) if 0 <= int(i) < n_words})
+            else:                    # sentence-level (older client): every word of the chosen sentences
+                ssel = {int(i) for i in data.get("selected", []) if 0 <= int(i) < n_sent}
+                wsel = [k for k, w in enumerate(words) if w["s"] in ssel]
+            sel = sorted({words[k]["s"] for k in wsel})
+            con.execute("INSERT INTO highlights (pid,round,text_id,sentences,words,ts) VALUES (?,?,?,?,?,?)",
+                        (p["id"], step["round"], step["text"], json.dumps(sel), json.dumps(wsel), now))
+            for ev in (data.get("log") or [])[:3000]:
                 try:
-                    i, action, t_ms = int(ev.get("i")), ev.get("a"), int(ev.get("t") or 0)
-                except (TypeError, ValueError, AttributeError):
+                    action, t_ms = ev.get("a"), int(ev.get("t") or 0)
+                    if "f" in ev:     # a stroke or tap over words f..to
+                        f, to = int(ev["f"]), int(ev.get("to", ev["f"]))
+                    else:             # older client: one sentence
+                        i = int(ev.get("i"))
+                        ks = [k for k, w in enumerate(words) if w["s"] == i]
+                        f, to = (ks[0], ks[-1]) if ks else (-1, -1)
+                except (TypeError, ValueError, AttributeError, KeyError):
                     continue
+                f, to = min(f, to), max(f, to)
                 method = ev.get("m") if ev.get("m") in ("touch", "pen", "mouse", "key") else None
-                if 0 <= i < n_sent and action in ("on", "off"):
-                    con.execute("INSERT INTO highlight_log (pid,round,text_id,sentence,action,t_ms,ts,method)"
-                                " VALUES (?,?,?,?,?,?,?,?)",
-                                (p["id"], step["round"], step["text"], i, action, t_ms, now, method))
+                if 0 <= f and to < n_words and action in ("on", "off"):
+                    con.execute("INSERT INTO highlight_log (pid,round,text_id,sentence,action,t_ms,ts,method,word_from,word_to)"
+                                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                                (p["id"], step["round"], step["text"], words[f]["s"], action, t_ms, now, method, f, to))
         elif step["type"] in ("test", "final"):
             t = CONTENT["texts"][step["text"]]
             items = {q["id"]: q for q in (t["practice"] if step["type"] == "test" else t["final"])}
@@ -696,6 +766,16 @@ async def complete(request: Request, x_token: str = Header(None)):
         else:
             con.execute("UPDATE participants SET step=?, step_started=? WHERE id=?", (nxt, now, p["id"]))
         return {"ok": True}
+
+
+def hl_words(t, lang, row):
+    """Highlighted word indices of a stored highlights row (older rows: all words of the sentences)."""
+    if row is None:
+        return set()
+    if row["words"] is not None:
+        return set(json.loads(row["words"]))
+    sents = set(json.loads(row["sentences"]))
+    return {k for k, w in enumerate(t["words"].get(lang) or []) if w["s"] in sents}
 
 
 def small_int(v, lo, hi):
@@ -752,11 +832,14 @@ def participant_summary(con, p, now):
     dev = con.execute("SELECT detail FROM events WHERE pid=? AND type='device' ORDER BY id DESC LIMIT 1", (p["id"],)).fetchone()
     dev = json.loads(dev["detail"]) if dev and dev["detail"] else {}
     surv = {r["item"]: r["value"] for r in con.execute("SELECT item, value FROM survey WHERE pid=? ORDER BY id", (p["id"],))}
-    hl = {}
-    for r in con.execute("SELECT round, sentences FROM highlights WHERE pid=? ORDER BY id", (p["id"],)):
-        hl[r["round"]] = len(json.loads(r["sentences"]))
     usual_text = text_for(p["grp"], "highlight")
-    n_sent = len(CONTENT["texts"][usual_text]["sentences"].get(p["lang"]) or []) or None
+    ut = CONTENT["texts"][usual_text]
+    hl, hlw = {}, {}
+    for r in con.execute("SELECT round, sentences, words FROM highlights WHERE pid=? ORDER BY id", (p["id"],)):
+        hl[r["round"]] = len(json.loads(r["sentences"]))
+        hlw[r["round"]] = len(hl_words(ut, p["lang"], r))
+    n_sent = len(ut["sentences"].get(p["lang"]) or []) or None
+    n_words = len(ut["words"].get(p["lang"]) or []) or None
     fconf = {c: con.execute("SELECT AVG(confidence) m FROM answers WHERE pid=? AND kind='final' AND condition=?",
                             (p["id"], c)).fetchone()["m"] for c in ("test", "highlight")}
     auto = con.execute("SELECT COUNT(*) c FROM steps WHERE pid=? AND type='test' AND extra LIKE '%\"auto_submit\": true%'",
@@ -783,8 +866,9 @@ def participant_summary(con, p, now):
         "s3_min": minutes("day9", p["day9_done"]),
         "away_sec": round(away, 1), "tests_auto_submitted": auto,
         "routine_text": text_for(p["grp"], "test"), "usual_text": usual_text,
+        "hl_words_r1": hlw.get(1), "hl_words_r2": hlw.get(2), "text_words": n_words,
+        "hl_share_r2": round(hlw[2] / n_words, 3) if hlw.get(2) is not None and n_words else None,
         "hl_sentences_r1": hl.get(1), "hl_sentences_r2": hl.get(2), "text_sentences": n_sent,
-        "hl_share_r2": round(hl[2] / n_sent, 3) if hl.get(2) is not None and n_sent else None,
         "final_conf_routine": round(fconf["test"], 2) if fconf["test"] is not None else None,
         "final_conf_usual": round(fconf["highlight"], 2) if fconf["highlight"] is not None else None,
         **{f"survey_{k}": surv.get(k) for k in SURVEY},
@@ -799,8 +883,9 @@ def build_items(con):
     out = []
     parts = {p["id"]: p for p in con.execute("SELECT * FROM participants")}
     hl = {}
-    for r in con.execute("SELECT pid, round, text_id, sentences FROM highlights ORDER BY id"):
-        hl[(r["pid"], r["round"])] = set(json.loads(r["sentences"]))
+    for r in con.execute("SELECT h.pid, h.round, h.text_id, h.sentences, h.words, p.lang FROM highlights h"
+                         " JOIN participants p ON p.id=h.pid ORDER BY h.id"):
+        hl[(r["pid"], r["round"])] = hl_words(CONTENT["texts"][r["text_id"]], r["lang"], r)
     preds = {(r["pid"], r["text_id"]): r["predicted"] for r in con.execute("SELECT * FROM predictions")}
     prior = {(r["pid"], r["item"]): r["value"] for r in con.execute("SELECT * FROM survey WHERE item LIKE 'prior_%'")}
     practice = {}
@@ -811,14 +896,22 @@ def build_items(con):
         t = CONTENT["texts"][a["text_id"]]
         q = next((x for x in t["final"] if x["id"] == a["qid"]), {})
         src = (q.get("_src") or {}).get(p["lang"], [])
+        aw = (q.get("_words") or {}).get(p["lang"], [])
+        src_words = [k for k, w in enumerate(t["words"].get(p["lang"]) or []) if w["s"] in src]
         s0 = practice.get((p["id"], "day0", a["text_id"], a["fact"]))
         s2 = practice.get((p["id"], "day2", a["text_id"], a["fact"]))
         is_usual = a["condition"] == "highlight"
 
-        def was_hl(rnd):
-            if not is_usual or (p["id"], rnd) not in hl or not src:
+        def was_hl(rnd, word_set):
+            """1 if any of word_set was highlighted at the end of round rnd (highlight text only)."""
+            if not is_usual or (p["id"], rnd) not in hl or not word_set:
                 return None
-            return int(any(i in hl[(p["id"], rnd)] for i in src))
+            return int(any(k in hl[(p["id"], rnd)] for k in word_set))
+
+        def share(rnd, word_set):
+            if not is_usual or (p["id"], rnd) not in hl or not word_set:
+                return None
+            return round(sum(k in hl[(p["id"], rnd)] for k in word_set) / len(word_set), 3)
         if s0 is None:
             hyper = None
         elif effective(s0):
@@ -836,7 +929,12 @@ def build_items(con):
             "s2_answer": s2["answer"] if s2 else None, "s2_correct": effective(s2) if s2 else None,
             "s2_confidence": s2["confidence"] if s2 else None,
             "s1_error_type": hyper,
-            "source_sentences": json.dumps(src), "highlighted_r1": was_hl(1), "highlighted_r2": was_hl(2),
+            "source_sentences": json.dumps(src), "answer_words": json.dumps(aw),
+            # answer words highlighted (the precise measure) ...
+            "highlighted_r1": was_hl(1, aw), "highlighted_r2": was_hl(2, aw),
+            # ... and anything in the fact's sentence highlighted, plus how much of that sentence
+            "sentence_hl_r1": was_hl(1, src_words), "sentence_hl_r2": was_hl(2, src_words),
+            "sentence_share_r2": share(2, src_words),
             "predicted_for_text": preds.get((p["id"], a["text_id"])), "text_max": len(t["final"]),
             "prior_knowledge": prior.get((p["id"], f"prior_{a['text_id']}")),
             "belief": p["belief"],
@@ -1033,7 +1131,7 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             header = list(rows[0].keys()) if rows else ["nickname"]
             return csv_response("items.csv", header, [[r[h] for h in header] for r in rows])
         simple = {
-            "highlight_log": "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentence, h.action, h.method, h.t_ms, h.ts"
+            "highlight_log": "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.action, h.method, h.word_from, h.word_to, h.sentence, h.t_ms, h.ts"
                              " FROM highlight_log h JOIN participants p ON p.id=h.pid ORDER BY h.pid, h.id",
             "steps": "SELECT s.id, p.nickname, p.grp, p.lang, p.excluded, s.stage, s.step_id, s.type, s.text_id, s.condition,"
                      " s.started, s.finished, s.elapsed_sec, s.hidden_n, s.away_sec, s.extra"
@@ -1049,7 +1147,7 @@ def admin_export(what: str, key: str = "", x_admin_key: str = Header(None)):
             return csv_response(f"{what}.csv", header, [list(r) for r in rows])
         if what == "highlights":
             rows = con.execute(
-                "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentences, h.ts"
+                "SELECT h.id, p.nickname, p.grp, p.lang, h.round, h.text_id, h.sentences, h.words, h.ts"
                 " FROM highlights h JOIN participants p ON p.id=h.pid ORDER BY h.pid, h.id"
             ).fetchall()
             header = rows[0].keys() if rows else ["id"]

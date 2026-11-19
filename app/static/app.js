@@ -289,92 +289,156 @@
     return [h("h1", {}, title), h("p", { class: "hint" }, hint)];
   }
 
-  // The study text as sentences. If `selectable`, sentences can be highlighted:
-  //  - finger: tap toggles a sentence; swiping scrolls the page as usual
-  //  - Apple Pencil / mouse: press and drag works like selecting text: every sentence from the one
-  //    where the stroke started to the one under the pen now (in reading order) gets highlighted,
-  //    whatever path the pen takes; moving back un-does the sentences that leave the range. A drag
-  //    that starts on a highlighted sentence erases instead.
-  //  - keyboard: Enter/Space on a focused sentence
-  // onChange(selectedIndices, {i, on, method}) is called for every single change.
+  // Highlight units for text without server-made tokens (the practice paragraph): words, or for
+  // Chinese single characters with digit/Latin runs kept together (same rule as the server).
+  const tokenize = (x) => (lang === "zh" ? x.match(/[0-9A-Za-z]+|\S/g) : x.split(/\s+/).filter(Boolean)) || [];
+
+  // The study text. If `selectable`, words can be highlighted like with a highlighter pen:
+  //  - Apple Pencil / mouse: press and drag; every word from where the stroke started to the word
+  //    under the pen (in reading order) is highlighted, whatever path the pen takes. Moving back
+  //    un-does words that leave the range. A stroke that starts on a highlighted word erases.
+  //  - finger: tap a word to toggle it; press and hold (~0.35 s), then drag to mark a range;
+  //    a quick swipe scrolls the page as usual
+  //  - keyboard: Enter/Space on a focused sentence toggles the whole sentence
+  // onChange(selectedWordIndices, change) is called after every tap/stroke, with
+  // change = {a: "on"|"off", f: firstWord, to: lastWord, m: "touch"|"pen"|"mouse"|"key"}.
   function textBlock(step, selectable, selected, onChange) {
     const sel = new Set(selected || []);
-    const paras = [], spans = [];
-    step.sentences.forEach((s, i) => {
+    const paras = [], words = [], gaps = [], sentWords = [];
+    const zh = lang === "zh";
+    step.sentences.forEach((s, si) => {
       if (!paras[s.p]) paras[s.p] = h("p", {});
-      const span = h("span", { class: "sent" + (sel.has(i) ? " hl" : ""), "data-i": i }, s.s);
-      spans[i] = span;
-      // a space between sentences, except after Chinese 。！？ (Chinese doesn't put spaces there)
-      paras[s.p].append(span, /[。！？]$/.test(s.s) ? "" : " ");
+      if (!selectable) {
+        paras[s.p].append(h("span", { class: "sent" }, s.s), /[。！？]$/.test(s.s) || zh ? "" : " ");
+        return;
+      }
+      const sent = h("span", { class: "sent", "data-s": si, tabindex: "0", role: "group" });
+      sentWords[si] = [];
+      (s.w || tokenize(s.s)).forEach((tok, j) => {
+        const k = words.length;
+        if (j > 0 && !zh) { const g = h("span", { class: "gap" }, " "); gaps[k - 1] = g; sent.append(g); }
+        const w = h("span", { class: "w" + (sel.has(k) ? " hl" : ""), "data-k": k }, tok);
+        words.push(w); sentWords[si].push(k); sent.append(w);
+      });
+      // the space between the previous sentence (same paragraph) and this one
+      const prev = step.sentences[si - 1];
+      if (prev && prev.p === s.p && sentWords[si].length && !zh && !/[。！？]$/.test(prev.s)) {
+        const g = h("span", { class: "gap" }, " ");
+        gaps[sentWords[si][0] - 1] = g;
+        paras[s.p].append(g);
+      }
+      paras[s.p].append(sent);
     });
     const article = h("article", { class: "text" + (selectable ? " selectable" : "") }, paras.filter(Boolean));
     if (!selectable) return { el: article, sel };
 
-    const set = (i, on, method) => {
-      if (sel.has(i) === on) return;
-      if (on) sel.add(i); else sel.delete(i);
-      spans[i].classList.toggle("hl", on);
-      spans[i].setAttribute("aria-pressed", on ? "true" : "false");
-      onChange && onChange([...sel], { i, on, method });
+    // gaps between two highlighted words are highlighted too, so a phrase looks like one stroke
+    const paintGap = (k) => { if (gaps[k]) gaps[k].classList.toggle("hl", sel.has(k) && sel.has(k + 1)); };
+    const set = (k, on) => {
+      if (sel.has(k) === on) return;
+      if (on) sel.add(k); else sel.delete(k);
+      words[k].classList.toggle("hl", on);
+      paintGap(k - 1); paintGap(k);
     };
-    const sentAt = (x, y) => {
+    gaps.forEach((_, k) => paintGap(k));
+    const wordAt = (x, y) => {
       const el = document.elementFromPoint(x, y);
-      const sp = el && el.closest ? el.closest(".sent") : null;
-      return sp && article.contains(sp) ? +sp.dataset.i : null;
+      if (!el || !article.contains(el)) return null;
+      if (el.classList.contains("w")) return +el.dataset.k;
+      if (el.classList.contains("gap")) {          // the space after a word counts as that word
+        const pv = el.previousElementSibling;
+        const w = pv && (pv.classList.contains("w") ? pv : pv.querySelector(".w:last-child"));
+        return w ? +w.dataset.k : null;
+      }
+      return null;
     };
-    spans.forEach((span, i) => {
-      span.setAttribute("role", "button");
-      span.setAttribute("tabindex", "0");
-      span.setAttribute("aria-pressed", sel.has(i) ? "true" : "false");
-      span.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); set(i, !sel.has(i), "key"); }
-      });
-    });
+    const report = (on, f, to, m) => onChange && onChange([...sel].sort((x, y) => x - y), { a: on ? "on" : "off", f, to, m });
 
-    let drag = null, skipClick = false;
-    article.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "touch" || e.button > 0) return;      // finger: handled by click below
-      const i = sentAt(e.clientX, e.clientY);
-      if (i === null) return;
-      e.preventDefault();
-      skipClick = true;                                           // the click that follows is ours
-      drag = { on: !sel.has(i), method: e.pointerType === "pen" ? "pen" : "mouse", anchor: i, lo: i, hi: i,
-               orig: new Map([[i, sel.has(i)]]) };
-      set(i, drag.on, drag.method);
+    // ---- strokes (shared by Pencil/mouse and finger long-press)
+    let drag = null;
+    const begin = (k, method) => {
+      drag = { on: !sel.has(k), m: method, anchor: k, lo: k, hi: k, orig: new Map([[k, sel.has(k)]]) };
+      set(k, drag.on);
       article.classList.add("dragging");
-    });
-    // Extend the stroke to sentence i: [anchor..i] gets the drag's state, sentences that drop out
-    // of the range go back to what they were before this stroke.
-    const extendTo = (i) => {
-      const lo = Math.min(drag.anchor, i), hi = Math.max(drag.anchor, i);
-      for (let j = drag.lo; j <= drag.hi; j++) if (j < lo || j > hi) set(j, drag.orig.get(j), drag.method);
+    };
+    const extendTo = (k) => {
+      if (!drag || k === null) return;
+      const lo = Math.min(drag.anchor, k), hi = Math.max(drag.anchor, k);
+      for (let j = drag.lo; j <= drag.hi; j++) if (j < lo || j > hi) set(j, drag.orig.get(j));
       for (let j = lo; j <= hi; j++) {
         if (!drag.orig.has(j)) drag.orig.set(j, sel.has(j));
-        set(j, drag.on, drag.method);
+        set(j, drag.on);
       }
       drag.lo = lo; drag.hi = hi;
     };
-    article.addEventListener("pointermove", (e) => {
+    const end = () => {
       if (!drag) return;
+      const d = drag; drag = null;
+      article.classList.remove("dragging");
+      report(d.on, d.lo, d.hi, d.m);
+    };
+
+    // Apple Pencil and mouse: pointer events
+    article.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch" || e.button > 0) return;
+      const k = wordAt(e.clientX, e.clientY);
+      if (k === null) return;
       e.preventDefault();
-      const i = sentAt(e.clientX, e.clientY);
-      if (i !== null) extendTo(i);
+      begin(k, e.pointerType === "pen" ? "pen" : "mouse");
     });
-    const end = () => { drag = null; article.classList.remove("dragging"); };
-    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) article.addEventListener(ev, end);
-    window.addEventListener("pointerup", end);
-    article.addEventListener("click", (e) => {
-      if (skipClick) { skipClick = false; return; }
-      const sp = e.target.closest && e.target.closest(".sent");
-      if (sp) set(+sp.dataset.i, !sel.has(+sp.dataset.i), "touch");
+    article.addEventListener("pointermove", (e) => {
+      if (!drag || drag.m === "touch") return;
+      e.preventDefault();
+      extendTo(wordAt(e.clientX, e.clientY));
     });
-    // iPad: an Apple Pencil stroke would scroll the page; stop that (fingers still scroll).
+    for (const ev of ["pointerup", "pointercancel"]) article.addEventListener(ev, () => { if (drag && drag.m !== "touch") end(); });
+    window.addEventListener("pointerup", () => { if (drag && drag.m !== "touch") end(); });
+
+    // Finger: tap toggles a word; press-and-hold then drag marks a range; a swipe scrolls.
+    const HOLD_MS = 350, SLOP = 10;
+    let touch = null;
     article.addEventListener("touchstart", (e) => {
-      if ([...e.touches].some(tp => tp.touchType === "stylus")) e.preventDefault();
+      const t0 = e.touches[0];
+      if ([...e.touches].some(tp => tp.touchType === "stylus")) { e.preventDefault(); return; }   // Pencil: no scrolling
+      if (e.touches.length > 1) { touch = null; return; }
+      const k = wordAt(t0.clientX, t0.clientY);
+      touch = { x: t0.clientX, y: t0.clientY, k, moved: false, timer: null };
+      if (k !== null) touch.timer = setTimeout(() => {
+        if (touch && !touch.moved) { touch.holding = true; begin(k, "touch"); }
+      }, HOLD_MS);
     }, { passive: false });
     article.addEventListener("touchmove", (e) => {
-      if ([...e.touches].some(tp => tp.touchType === "stylus")) e.preventDefault();
+      if ([...e.touches].some(tp => tp.touchType === "stylus")) { e.preventDefault(); return; }
+      if (!touch) return;
+      const t0 = e.touches[0];
+      if (touch.holding) { e.preventDefault(); extendTo(wordAt(t0.clientX, t0.clientY)); return; }
+      if (Math.hypot(t0.clientX - touch.x, t0.clientY - touch.y) > SLOP) { touch.moved = true; clearTimeout(touch.timer); }
     }, { passive: false });
+    article.addEventListener("touchend", (e) => {
+      if (!touch) return;
+      clearTimeout(touch.timer);
+      const tc = touch; touch = null;
+      if (tc.holding) { e.preventDefault(); end(); return; }
+      if (!tc.moved && tc.k !== null) {          // a tap: toggle one word
+        e.preventDefault();                      // no synthetic click / double-tap zoom
+        const on = !sel.has(tc.k);
+        set(tc.k, on);
+        report(on, tc.k, tc.k, "touch");
+      }
+    }, { passive: false });
+    article.addEventListener("touchcancel", () => { if (touch) clearTimeout(touch.timer); touch = null; if (drag && drag.m === "touch") end(); });
+
+    // Keyboard: a focused sentence toggles as a whole
+    article.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const si = e.target.dataset && e.target.dataset.s;
+      if (si === undefined) return;
+      e.preventDefault();
+      const ks = sentWords[+si];
+      const on = !ks.every(k => sel.has(k));
+      ks.forEach(k => set(k, on));
+      report(on, ks[0], ks[ks.length - 1], "key");
+    });
     return { el: article, sel };
   }
 
@@ -397,15 +461,16 @@
     const r1 = step.round === 1;
     const draft = loadDraft(step);
     const started = Date.now() - stepMs(step);
-    // every change: sentence index, on/off, ms since the round started, method (touch/pen/mouse/key)
+    // every tap/stroke: word range f..to, on/off, ms since the round started, method (touch/pen/mouse/key)
     const log = (draft && draft.log) || [];
-    const { el, sel } = textBlock(step, true, draft ? draft.selected : step.selected, (selected, ch) => {
-      log.push({ i: ch.i, a: ch.on ? "on" : "off", t: Date.now() - started, m: ch.method });
-      saveDraft(step, { selected, log });
+    const start = draft && draft.words ? draft.words : (step.selected_words || []);
+    const { el, sel } = textBlock(step, true, start, (words, ch) => {
+      log.push({ ...ch, t: Date.now() - started });
+      saveDraft(step, { words, log });
     });
     $app.replaceChildren(
       ...header(t(r1 ? "hlTitle1" : "hlTitle2", { title: step.title }), t(r1 ? "hlHint1" : "hlHint2")), el,
-      h("div", { class: "actions" }, timedContinue(step, () => ({ selected: [...sel], log }))));
+      h("div", { class: "actions" }, timedContinue(step, () => ({ words: [...sel].sort((x, y) => x - y), log }))));
   }
 
   // Elapsed ms within the step, measured from server step start (so it survives reloads).

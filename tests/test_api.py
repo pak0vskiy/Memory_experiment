@@ -565,3 +565,66 @@ def test_test_mode_shortens_timers_and_gaps(env):
     client.post("/api/admin/tester", headers=ADMIN, json={"id": pid, "tester": False})
     clock.advance(1)
     assert state(client, tok)["step"]["dur"] == main.HIGHLIGHT_SEC   # same session continues, real timer
+
+
+def test_word_level_highlights_link_to_answer_words(env):
+    client, clock = env
+    tok = join(client, nick="wordy").json()["token"]
+    grp = sqlite3.connect(main.DB_PATH).execute("SELECT grp FROM participants WHERE nickname='wordy'").fetchone()[0]
+    routine, usual = main.text_for(grp, "test"), main.text_for(grp, "highlight")
+    t = main.CONTENT["texts"][usual]
+    words = t["words"]["en"]
+    q_a, q_b = t["final"][0], t["final"][3]
+    aw = q_a["_words"]["en"]                       # answer words of fact A: highlighted exactly
+    sent_b = q_b["_src"]["en"][0]                  # fact B: a non-answer word in its sentence only
+    other_b = next(k for k, w in enumerate(words) if w["s"] == sent_b and k not in q_b["_words"]["en"])
+    chosen = sorted(set(aw) | {other_b})
+    run_session1(client, clock, tok)
+    clock.advance(48 * 3600); state(client, tok)
+    clock.advance(240)
+    log = [{"a": "on", "f": aw[0], "to": aw[-1], "t": 1200, "m": "pen"}, {"a": "on", "f": other_b, "to": other_b, "t": 3000, "m": "touch"}]
+    assert complete(client, tok, "hl1", {"words": chosen, "log": log}).status_code == 200
+    st = state(client, tok)
+    assert st["step"]["selected_words"] == chosen                         # round 2 starts from round-1 words
+    assert st["step"]["selected"] == sorted({words[k]["s"] for k in chosen})
+    clock.advance(240); complete(client, tok, "hl2", {"words": chosen, "log": []})
+    state(client, tok)
+    clock.advance(100); complete(client, tok, "test", practice_answers(routine))
+    clock.advance(140); complete(client, tok, "feedback")
+    complete(client, tok, "predict", {"pred": {"T1": 2, "T2": 2}, "belief": "same"})
+    clock.advance(7 * 24 * 3600); state(client, tok)
+    complete(client, tok, "final1", final_answers("T1", 3)); complete(client, tok, "final2", final_answers("T2", 3))
+    complete(client, tok, "survey", {"answers": SURVEY_OK})
+
+    items = {r["qid"]: r for r in csv_rows(client, "items") if r["condition"] == "highlight"}
+    a, b = items[q_a["id"]], items[q_b["id"]]
+    assert a["highlighted_r2"] == "1" and a["sentence_hl_r2"] == "1"
+    assert b["highlighted_r2"] == "0" and b["sentence_hl_r2"] == "1"        # its sentence touched, answer not
+    assert 0 < float(b["sentence_share_r2"]) < 1
+    untouched = [r for qid, r in items.items() if r["sentence_hl_r2"] == "0"]
+    assert untouched and all(r["highlighted_r2"] == "0" for r in untouched)
+    assert json.loads(a["answer_words"]) == aw
+
+    part = csv_rows(client, "participants")[0]
+    assert part["hl_words_r2"] == str(len(chosen)) and part["text_words"] == str(len(words))
+    hlog = csv_rows(client, "highlight_log")
+    assert [(r["action"], r["method"], r["word_from"], r["word_to"]) for r in hlog] == \
+        [("on", "pen", str(aw[0]), str(aw[-1])), ("on", "touch", str(other_b), str(other_b))]
+    hl = csv_rows(client, "highlights")
+    assert json.loads(hl[0]["words"]) == chosen
+
+
+def test_every_question_has_answer_words_in_every_language():
+    for tid in main.TEXT_IDS:
+        t = main.CONTENT["texts"][tid]
+        for q in t["final"] + t["practice"]:
+            for l in main.LANGS:
+                aw = q["_words"][l]
+                assert aw, (tid, q["id"], l)
+                # answer words sit inside the fact's sentence
+                assert all(t["words"][l][k]["s"] in q["_src"][l] for k in aw), (tid, q["id"], l)
+
+
+def test_tokenize():
+    assert main.tokenize("In 2004, the biologist", "en") == ["In", "2004,", "the", "biologist"]
+    assert main.tokenize("2004年，希拉·帕特克用Apple", "zh") == ["2004", "年", "，", "希", "拉", "·", "帕", "特", "克", "用", "Apple"]

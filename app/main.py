@@ -566,7 +566,7 @@ async def login(request: Request):
 def step_payload(con, p, step, now):
     lang = p["lang"]
     t = CONTENT["texts"].get(step.get("text", ""), {})
-    payload = {"id": step["id"], "type": step["type"]}
+    payload = {"id": step["id"], "type": step["type"], "started": round(p["step_started"] or now)}
     if "text" in step:
         payload["text"] = step["text"]
         payload["title"] = tr(t.get("title", step["text"]), lang)
@@ -1096,6 +1096,68 @@ async def admin_tester(request: Request, x_admin_key: str = Header(None)):
 PARTICIPANT_TABLES = ("answers", "highlights", "highlight_log", "predictions", "events", "steps", "survey")
 
 
+def confirmed_participant(body):
+    """Look up the participant in body["id"] and check that body["confirm"] repeats their nickname."""
+    with db() as con:
+        p = con.execute("SELECT * FROM participants WHERE id=?", (int(body.get("id", 0)),)).fetchone()
+    if not p:
+        raise HTTPException(404, "no such participant")
+    if str(body.get("confirm", "")).strip().lower() != p["nickname"].lower():
+        raise HTTPException(400, "type the nickname exactly to confirm")
+    return p
+
+
+def backup_db(label, nickname):
+    """Copy the whole database to data/backups/ before a destructive admin action. Uses its own
+    connection, outside any write transaction (a connection holding the write lock can't back
+    itself up)."""
+    (DATA_DIR / "backups").mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w-]+", "_", nickname)[:30]
+    backup = DATA_DIR / "backups" / f"study-before-{label}-{safe}-{time.strftime('%Y-%m-%d_%H%M%S')}.db"
+    src, dst = connect(), sqlite3.connect(backup)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    return backup
+
+
+# what each session leaves behind: rows with that stage, plus tables written only in that session
+SESSION_STAGES = {1: ("day0", "day2", "day9"), 2: ("day2", "day9"), 3: ("day9",)}
+
+
+@app.post("/api/admin/reset")
+async def admin_reset(request: Request, x_admin_key: str = Header(None)):
+    """Clear one session (and every later one) for a participant so they can do it again, e.g. a
+    test account or a technical failure. Earlier sessions are kept. A backup is written first.
+    For a real participant, a redone session is no longer comparable: consider excluding them."""
+    require_admin(x_admin_key)
+    body = await request.json()
+    session = int(body.get("session", 0))
+    if session not in SESSION_STAGES:
+        raise HTTPException(400, "session must be 1, 2 or 3")
+    p = confirmed_participant(body)
+    backup = backup_db(f"reset-s{session}", p["nickname"])
+    stages = SESSION_STAGES[session]
+    marks = ",".join("?" * len(stages))
+    with db() as con:
+        for table in ("answers", "steps", "events"):
+            con.execute(f"DELETE FROM {table} WHERE pid=? AND stage IN ({marks})", (p["id"], *stages))
+        if session <= 2:   # highlighting and predictions happen in Session 2
+            for table in ("highlights", "highlight_log", "predictions"):
+                con.execute(f"DELETE FROM {table} WHERE pid=?", (p["id"],))
+        con.execute("DELETE FROM survey WHERE pid=?", (p["id"],))   # Session 3, always after the reset point
+        done_cols = {"day0": "day0_done", "day2": "day2_done", "day9": "day9_done"}
+        sets = ", ".join(f"{done_cols[st]}=NULL" for st in stages)
+        con.execute(f"UPDATE participants SET {sets}, stage=NULL, step=0, step_started=NULL, test_used=NULL"
+                    + (", belief=NULL" if session <= 2 else "") + " WHERE id=?", (p["id"],))
+        con.execute("INSERT INTO events (pid,stage,step,type,ts,detail) VALUES (?,?,?,?,?,?)",
+                    (p["id"], None, "", "admin_reset", time.time(), json.dumps({"session": session, "backup": backup.name})))
+    log.warning("admin reset session %s for %s; backup: %s", session, p["nickname"], backup.name)
+    return {"ok": True, "backup": backup.name}
+
+
 @app.post("/api/admin/delete")
 async def admin_delete(request: Request, x_admin_key: str = Header(None)):
     """Permanently delete one participant and all their data (test accounts, withdrawal requests).
@@ -1103,23 +1165,8 @@ async def admin_delete(request: Request, x_admin_key: str = Header(None)):
     data/backups/ first, so a mistake can be undone."""
     require_admin(x_admin_key)
     body = await request.json()
-    with db() as con:
-        p = con.execute("SELECT * FROM participants WHERE id=?", (int(body.get("id", 0)),)).fetchone()
-    if not p:
-        raise HTTPException(404, "no such participant")
-    if str(body.get("confirm", "")).strip().lower() != p["nickname"].lower():
-        raise HTTPException(400, "type the nickname exactly to confirm")
-    # backup through its own connection, before the write transaction (a connection that holds the
-    # write lock can't back itself up)
-    (DATA_DIR / "backups").mkdir(parents=True, exist_ok=True)
-    safe = re.sub(r"[^\w-]+", "_", p["nickname"])[:30]
-    backup = DATA_DIR / "backups" / f"study-before-delete-{safe}-{time.strftime('%Y-%m-%d_%H%M%S')}.db"
-    src, dst = connect(), sqlite3.connect(backup)
-    try:
-        src.backup(dst)
-    finally:
-        dst.close()
-        src.close()
+    p = confirmed_participant(body)
+    backup = backup_db("delete", p["nickname"])
     with db() as con:
         for table in PARTICIPANT_TABLES:
             con.execute(f"DELETE FROM {table} WHERE pid=?", (p["id"],))

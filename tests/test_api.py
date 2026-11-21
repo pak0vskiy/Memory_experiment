@@ -680,3 +680,49 @@ def test_admin_can_delete_a_participant_with_confirmation(env):
     backup = main.DATA_DIR / "backups" / r.json()["backup"]
     assert sqlite3.connect(backup).execute("SELECT COUNT(*) FROM participants WHERE nickname='910goat'").fetchone()[0] == 1
     assert client.get("/api/state", headers=hdr(keep)).status_code == 200
+
+
+def test_admin_can_clear_a_session_so_it_can_be_redone(env):
+    client, clock = env
+    tok, grp, routine, usual = run_all(client, clock, nick="redo")
+    other, *_ = run_all(client, clock, nick="untouched")
+    con = sqlite3.connect(main.DB_PATH)
+    pid = con.execute("SELECT id FROM participants WHERE nickname='redo'").fetchone()[0]
+    count = lambda sql: con.execute(sql, (pid,)).fetchone()[0]
+    s1_practice = count("SELECT COUNT(*) FROM answers WHERE pid=? AND stage='day0'")
+    before_other = con.execute("SELECT COUNT(*) FROM answers").fetchone()[0] - count("SELECT COUNT(*) FROM answers WHERE pid=?")
+
+    assert client.post("/api/admin/reset", headers=ADMIN, json={"id": pid, "session": 4, "confirm": "redo"}).status_code == 400
+    assert client.post("/api/admin/reset", headers=ADMIN, json={"id": pid, "session": 2, "confirm": "nope"}).status_code == 400
+    r = client.post("/api/admin/reset", headers=ADMIN, json={"id": pid, "session": 2, "confirm": "Redo"})
+    assert r.status_code == 200 and (main.DATA_DIR / "backups" / r.json()["backup"]).exists()
+
+    # Session 1 kept; Sessions 2 and 3 gone
+    assert count("SELECT COUNT(*) FROM answers WHERE pid=? AND stage='day0'") == s1_practice
+    assert count("SELECT COUNT(*) FROM answers WHERE pid=? AND stage IN ('day2','day9')") == 0
+    for table in ("highlights", "highlight_log", "predictions", "survey"):
+        assert count(f"SELECT COUNT(*) FROM {table} WHERE pid=?") == 0, table
+    assert count("SELECT COUNT(*) FROM steps WHERE pid=? AND stage='day0'") > 0
+    assert count("SELECT COUNT(*) FROM steps WHERE pid=? AND stage<>'day0'") == 0
+    row = con.execute("SELECT day0_done, day2_done, day9_done, belief FROM participants WHERE id=?", (pid,)).fetchone()
+    assert row[0] is not None and row[1:] == (None, None, None)
+    # the other participant is untouched
+    assert con.execute("SELECT COUNT(*) FROM answers").fetchone()[0] - count("SELECT COUNT(*) FROM answers WHERE pid=?") == before_other
+
+    # 48 h have long passed, so Session 2 is open again and starts from the beginning
+    st = state(client, tok, skip_intro=False)
+    assert st["stage"] == "day2" and st["step"]["id"] == "intro"
+    complete(client, tok, "intro")
+    st = state(client, tok)
+    assert st["step"]["id"] == "hl1" and st["step"]["selected_words"] == []
+
+    # clearing only Session 3 keeps Session 2
+    run_rest = csv_rows(client, "events")
+    assert any(e["type"] == "admin_reset" for e in run_rest)
+    pid2 = con.execute("SELECT id FROM participants WHERE nickname='untouched'").fetchone()[0]
+    hl_before = con.execute("SELECT COUNT(*) FROM highlights WHERE pid=?", (pid2,)).fetchone()[0]
+    assert client.post("/api/admin/reset", headers=ADMIN, json={"id": pid2, "session": 3, "confirm": "untouched"}).status_code == 200
+    assert con.execute("SELECT COUNT(*) FROM highlights WHERE pid=?", (pid2,)).fetchone()[0] == hl_before > 0
+    assert con.execute("SELECT COUNT(*) FROM answers WHERE pid=? AND kind='final'", (pid2,)).fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM predictions WHERE pid=?", (pid2,)).fetchone()[0] == 2
+    assert state(client, other, skip_intro=False)["step"]["variant"] == "s3"

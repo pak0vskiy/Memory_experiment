@@ -168,6 +168,7 @@ Admin endpoints authenticate with the header `X-Admin-Key: <ADMIN_KEY>` (the adm
 | GET | `/api/admin/answers` | All answers (practice + final) with question, key, auto mark, override |
 | POST | `/api/admin/grade` | `{id, override: 1 / 0 / null}` |
 | POST | `/api/admin/exclude` | `{id, excluded: true/false}` |
+| POST | `/api/admin/reset` | `{id, session: 1/2/3, confirm: nickname}`: clear that session and later ones so they can be redone; backup first |
 | POST | `/api/admin/delete` | `{id, confirm: nickname}`: permanently delete a participant and all their data; a backup is written to `data/backups/` first |
 | POST | `/api/admin/reload-content` | Re-read `content.json` without restarting; returns validation warnings |
 | GET | `/api/admin/content-check` | Validation warnings for `content.json` |
@@ -313,6 +314,7 @@ sudo bash deploy/reset-data.sh     # warns if timings aren't the real ones; old 
 
 - **Target sample:** about 20–25 people finishing all 3 sessions, so recruit about 30–35 (expect around a third to drop out). With a paired design, that detects a medium-to-large difference (dz ≈ 0.6–0.8, α = .05, power = .80).
 - **Invitation messages** in all five languages: `docs/recruitment-messages.md` (they don't reveal the hypothesis or the topics).
+- **Letting someone redo a session** (test account, technical failure): **Redo session…** on the admin page, or without restarting anything: `docker exec -i memory-study python - NICKNAME 2 < deploy/reset-session.py` (shows what would be deleted), then the same with `yes` after the `2`. That session and later ones are cleared (backup first); earlier ones are kept. A redone session isn't comparable for a real participant, so consider excluding them.
 - **Deleting someone** (a test account, or a participant who withdraws): **Delete** on the admin page, then type their nickname. A backup of the whole database is saved first.
 - **Reminders:** yellow rows on the admin page = next session open but not started. Send these people a reminder on KakaoTalk.
 - **Exclusions:** decide the rules before looking at results. Candidates: `survey_reviewed` = yes, `survey_notes` = yes, a lot of `away_sec` during tests, sessions that took far too long ("Session min" column), or a big deviation from the 48 h / 7 d gaps. Excluded people stay in the CSVs with `excluded=1`. They stay in the CSVs with `excluded=1`.

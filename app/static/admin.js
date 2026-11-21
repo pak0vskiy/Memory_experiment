@@ -125,6 +125,16 @@
             await api("/api/admin/exclude", { id: p.id, excluded: !p.excluded }); load(); } },
             p.excluded ? "Include" : "Exclude"),
           " ",
+          h("button", { class: "btn small", title: "Clear a session (and later ones) so it can be done again", onclick: async () => {
+            const n = prompt(`Redo a session for ${p.nickname}\n\nWhich session should be cleared? Type 1, 2 or 3.\nThat session and every later one are deleted (earlier ones are kept), and ${p.nickname} can do it again as soon as it's open. A backup is saved first.\n\nFor a real participant, the redone session isn't comparable any more: consider excluding them.`);
+            if (n === null) return;
+            if (!["1", "2", "3"].includes(n.trim())) return alert("Please type 1, 2 or 3.");
+            const typed = prompt(`Clear Session ${n.trim()}${n.trim() !== "3" ? " and the sessions after it" : ""} for ${p.nickname}.\n\nType the nickname to confirm:`);
+            if (typed === null) return;
+            try { const r = await api("/api/admin/reset", { id: p.id, session: +n.trim(), confirm: typed }); alert(`Done. Backup: ${r.backup}`); }
+            catch (e) { alert("Nothing changed: " + e.message); }
+            load(); } }, "Redo session…"),
+          " ",
           h("button", { class: "btn small danger", onclick: async () => {
             const typed = prompt(`Permanently delete ${p.nickname} and all their answers?\n\nA backup of the database is saved first (data/backups on the server).\n\nType the nickname to confirm:`);
             if (typed === null) return;

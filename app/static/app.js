@@ -114,7 +114,9 @@
   // ------------------------------------------------------------ drafts
   // Work in progress (typed answers, confidence, highlights) is kept in localStorage so a reload,
   // a Safari tab discard or a failed save never loses it. Cleared once the server accepts the step.
-  const draftKey = (step) => `ms_draft:${token}:${current && current.stage}:${step.id}`;
+  // The step's start time is part of the key, so if a session is cleared and redone (admin
+  // "Redo session"), drafts typed in the earlier attempt aren't restored.
+  const draftKey = (step) => `ms_draft:${token}:${current && current.stage}:${step.id}:${step.started || ""}`;
   function loadDraft(step) {
     try { return JSON.parse(localStorage.getItem(draftKey(step))) || null; } catch (e) { return null; }
   }
